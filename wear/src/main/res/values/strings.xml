@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">Sports Complication</string>
+    <string name="complication_label">Score en direct</string>
+</resources>

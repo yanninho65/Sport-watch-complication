@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-feature android:name="android.hardware.type.watch" />
+
+    <application
+        android:allowBackup="true"
+        android:icon="@drawable/ic_score_complication"
+        android:label="@string/app_name">
+
+        <uses-library
+            android:name="com.google.android.wearable"
+            android:required="false" />
+
+        <!--
+             Fournit les données de score aux complications (LONG_TEXT et
+             SMALL_IMAGE). UPDATE_PERIOD_SECONDS=0 car les mises à jour sont
+             déclenchées manuellement (ComplicationDataSourceUpdateRequester)
+             dès qu'une nouvelle donnée arrive du téléphone, plutôt que par
+             un rafraîchissement périodique du système.
+        -->
+        <service
+            android:name=".ScoreComplicationService"
+            android:exported="true"
+            android:icon="@drawable/ic_score_complication"
+            android:label="@string/complication_label"
+            android:permission="com.google.android.wearable.permission.BIND_COMPLICATION_PROVIDER">
+            <intent-filter>
+                <action android:name="android.support.wearable.complications.ACTION_COMPLICATION_UPDATE_REQUEST" />
+            </intent-filter>
+            <meta-data
+                android:name="android.support.wearable.complications.SUPPORTED_TYPES"
+                android:value="LONG_TEXT,SMALL_IMAGE" />
+            <meta-data
+                android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
+                android:value="0" />
+        </service>
+
+    </application>
+
+</manifest>
