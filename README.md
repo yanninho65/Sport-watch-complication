@@ -11,9 +11,14 @@ Complication Wear OS qui affiche le score d'un match en direct :
 Ce dépôt contient uniquement la partie **montre**. Le service
 `ScoreComplicationService` répond aux deux types de complications, mais
 les données viennent d'un cache statique en mémoire (`MatchScoreStore`),
-pas encore relié au téléphone. Il n'y a donc pas encore de match réel
-affiché — seulement l'aperçu `PSG 2-1 OM · 64'` visible dans le
-sélecteur de complications de la montre.
+pas encore relié au téléphone.
+
+Pour l'instant, `MatchScoreStore` contient un match factice codé en dur
+(PSG 2-1 OM · 64', logos rouge/bleu sans tint) — ça permet de valider le
+rendu réel des deux types de complication sur la montre (texte + couleur
+du logo dans le Dashboard Samsung) avant que l'app téléphone existe. À
+remplacer par `null` (ou la vraie donnée) une fois l'intégration
+téléphone branchée.
 
 **Prochaine étape** : une app téléphone qui laisse choisir un match dans
 TheSportsDB, l'interroge périodiquement, et pousse les mises à jour vers
