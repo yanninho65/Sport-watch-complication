@@ -37,10 +37,13 @@ object WatchSync {
 
     fun sendMatch(context: Context, match: MatchResult, homeLogo: Asset?, awayLogo: Asset?) {
         val request = PutDataMapRequest.create(MATCH_PATH).apply {
+            dataMap.putString("sport", match.sport.name)
             dataMap.putString("homeTeam", match.homeTeam)
             dataMap.putString("awayTeam", match.awayTeam)
             dataMap.putString("homeScore", match.homeScore ?: "")
             dataMap.putString("awayScore", match.awayScore ?: "")
+            match.currentSetHomeGames?.let { dataMap.putInt("currentSetHomeGames", it) }
+            match.currentSetAwayGames?.let { dataMap.putInt("currentSetAwayGames", it) }
             dataMap.putString("status", match.status)
             match.kickoffEpochMillis?.let { dataMap.putLong("kickoffEpochMillis", it) }
             homeLogo?.let { dataMap.putAsset("homeLogo", it) }

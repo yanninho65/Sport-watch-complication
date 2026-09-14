@@ -16,12 +16,23 @@ object FollowedMatchPrefs {
     fun save(context: Context, match: MatchResult) {
         prefs(context).edit().apply {
             putString("id", match.id)
+            putString("sport", match.sport.name)
             putString("idHomeTeam", match.idHomeTeam)
             putString("idAwayTeam", match.idAwayTeam)
             putString("homeTeam", match.homeTeam)
             putString("awayTeam", match.awayTeam)
             putString("homeScore", match.homeScore)
             putString("awayScore", match.awayScore)
+            if (match.currentSetHomeGames != null) {
+                putInt("currentSetHomeGames", match.currentSetHomeGames)
+            } else {
+                remove("currentSetHomeGames")
+            }
+            if (match.currentSetAwayGames != null) {
+                putInt("currentSetAwayGames", match.currentSetAwayGames)
+            } else {
+                remove("currentSetAwayGames")
+            }
             putString("date", match.date)
             putString("time", match.time)
             putString("status", match.status)
@@ -39,14 +50,22 @@ object FollowedMatchPrefs {
         val id = p.getString("id", null) ?: return null
         val homeTeam = p.getString("homeTeam", null) ?: return null
         val awayTeam = p.getString("awayTeam", null) ?: return null
+        // Repli FOOTBALL : des prefs écrites avant l'introduction du tennis
+        // n'ont pas cette clé.
+        val sport = p.getString("sport", null)?.let { name ->
+            Sport.values().firstOrNull { it.name == name }
+        } ?: Sport.FOOTBALL
         return MatchResult(
             id = id,
+            sport = sport,
             idHomeTeam = p.getString("idHomeTeam", null),
             idAwayTeam = p.getString("idAwayTeam", null),
             homeTeam = homeTeam,
             awayTeam = awayTeam,
             homeScore = p.getString("homeScore", null),
             awayScore = p.getString("awayScore", null),
+            currentSetHomeGames = if (p.contains("currentSetHomeGames")) p.getInt("currentSetHomeGames", 0) else null,
+            currentSetAwayGames = if (p.contains("currentSetAwayGames")) p.getInt("currentSetAwayGames", 0) else null,
             date = p.getString("date", null) ?: "?",
             time = p.getString("time", null),
             status = p.getString("status", null).orEmpty(),

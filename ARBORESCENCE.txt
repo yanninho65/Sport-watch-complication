@@ -1,43 +1,65 @@
 Arborescence des fichiers livrés dans ce zip — à extraire à la racine
 du dépôt Sport-watch-complication (écrase les fichiers existants).
-Aucun fichier à supprimer. Seul ComplicationImageComposer.kt change
-côté code (ScoreComplicationService.kt et AndroidManifest.xml ne
-bougent pas, aucun type ne change) — mais comme ça touche 2 dossiers
-différents (racine + wear/.../kotlin), on repart quand même en zip
-pour garder l'arborescence claire.
+Aucun fichier à supprimer, aucun fichier nouveau — uniquement des
+modifications de fichiers existants. Ça touche 3 dossiers différents
+(racine, mobile/.../kotlin, wear/.../kotlin), donc zip pour garder
+l'arborescence claire, comme pour la livraison précédente
+(choix-sport-tennis.zip).
 
-complication-logos-resserres.zip
-├── README.md                                              [modifié]
-└── wear/src/main/kotlin/.../ComplicationImageComposer.kt  [modifié]
+score-set-en-cours-montre.zip
+├── README.md                                                [modifié]
+├── mobile/src/main/kotlin/.../mobile/
+│   ├── Models.kt                                            [modifié]
+│   ├── FollowedMatchPrefs.kt                                [modifié]
+│   ├── LiveTennisApi.kt                                     [modifié]
+│   └── WatchSync.kt                                         [modifié]
+└── wear/src/main/kotlin/.../
+    ├── MatchScore.kt                                        [modifié]
+    ├── MatchListenerService.kt                              [modifié]
+    ├── MatchClock.kt                                        [modifié]
+    └── ScoreComplicationService.kt                          [modifié — commentaire seulement]
 
-Pourquoi ce changement :
-- Sur Zenith, la case SMALL_IMAGE (gauche) montrait le logo domicile
-  (partiellement visible, ex. l'écusson rond bleu de l'Inter) mais
-  jamais le logo extérieur — alors que le format précédent plaçait
-  justement les deux logos près des BORDS du rectangle large (le plus
-  loin possible du centre). C'est l'inverse de ce qu'il fallait : seul
-  le score, toujours positionné au centre, a survécu à tous les essais
-  jusqu'ici (cercle Dashboard, rectangle bords). Le centre est donc la
-  seule zone dont on sait qu'elle survit au recadrage, quel qu'il soit.
-- Vérifié au passage : le pipeline logo domicile/extérieur (téléphone →
-  montre) traite les deux logos de façon strictement identique, donc ce
-  n'est pas un bug de données — bien un recadrage côté rendu.
+Ce que ça change (suite de choix-sport-tennis.zip) :
+- Le score de JEUX du set en cours (tennis) arrive maintenant jusqu'à
+  la montre. MatchResult (mobile) porte deux nouveaux champs optionnels
+  `currentSetHomeGames`/`currentSetAwayGames`, remplis par
+  LiveTennisApi.parseMatch à partir du dernier élément de chaque liste
+  de `score.games` (l'API renvoie les jeux gagnés PAR SET ; le dernier
+  élément est donc le set en cours). Nuls en football, nuls en tennis
+  tant qu'aucun set n'a commencé.
+- WatchSync relaie ces deux champs (+ le sport) à la montre via la Data
+  Layer API (nouvelles clés `currentSetHomeGames`/`currentSetAwayGames`/
+  `sport` dans la DataMap).
+- Côté montre : MatchScore porte les mêmes champs + `sport` (chaîne
+  brute "FOOTBALL"/"TENNIS"). MatchListenerService les lit depuis la
+  DataMap. MatchClock.kt sait maintenant traduire DEUX vocabulaires de
+  statut selon `match.sport` : celui de TheSportsDB pour le foot
+  (inchangé), et un nouveau pour Live Tennis API
+  ("upcoming"/"live"/"completed"/"cancelled") — la fonction `liveSetLabel`
+  compose le libellé de set à partir du score de jeux reçu.
+- Résultat visible sur le LONG_TEXT (emplacement central Zenith) pour un
+  match de tennis en direct : "Alcaraz 2-1 Sinner · 3e set 4-3" au lieu
+  de "Alcaraz 2-1 Sinner · live" (le statut brut affiché tel quel avant
+  ce changement).
+- FollowedMatchPrefs (téléphone) persiste/restaure aussi ces deux
+  champs, pour que la carte "match suivi" survive à une fermeture de
+  l'app.
 
-Ce que ça change dans ComplicationImageComposer.kt :
-- Canvas plus compact : 300x150 (au lieu de 480x200).
-- Nouvelle constante WIDE_LOGO_OFFSET_X (68px) : distance entre le
-  centre et chaque logo, au lieu d'un espacement depuis les bords
-  (WIDE_LOGO_MARGIN, supprimée). Les deux logos sont donc désormais
-  proches l'un de l'autre, encadrant le score au centre.
-- Taille des logos réduite (84px, contre 150px) et texte du score
-  réduit en conséquence (46px, contre 84px) pour que tout tienne dans
-  cet espace plus resserré.
-- S'applique à composeColorWide (SMALL_IMAGE) ET composeMonochromeWide
-  (MONOCHROMATIC_IMAGE), qui partagent ces constantes.
-- Aucune garantie totale : sans connaître les dimensions exactes de la
-  case Zenith, c'est le meilleur compromis empirique, pas une certitude.
-- README.md mis à jour en conséquence.
+Ce qui reste un TODO séparé (voir README, section "Choix du sport et
+intégration tennis") :
+- Le score du JEU en cours (`points`, ex. "30-15") n'est pas relayé —
+  l'API le fournit déjà dans le même appel, rien ne l'empêche techniquement,
+  juste pas fait ici.
+- Les rendus compacts (SMALL_IMAGE / MONOCHROMATIC_IMAGE / SHORT_TEXT)
+  n'affichent toujours que le score de sets, pas le set en cours.
 
-À tester sur la montre : la case SMALL_IMAGE de gauche sur Zenith
-devrait maintenant montrer les DEUX logos, resserrés de part et
-d'autre du score.
+Pas de nouvelle clé API ni de nouvelle dépendance : ce zip s'applique
+par-dessus choix-sport-tennis.zip (déjà livré) sans rien y changer côté
+sélecteur de sport ou recherche.
+
+À tester sur la montre : suivre un match de tennis en direct doit faire
+apparaître, dans l'emplacement central LONG_TEXT du visage Zenith, le
+numéro et le score du set en cours après le score de sets (ex.
+"3e set 4-3"). Si le score de jeux n'est pas encore connu au moment du
+premier envoi, "En direct" s'affiche à la place le temps du prochain
+rafraîchissement (jusqu'à 3 minutes, voir MatchFollowService).

@@ -75,6 +75,71 @@ dans une carte en haut de l'écran tant qu'un match est suivi, permet de
 tout stopper à la main (service arrêté + complication remise à zéro
 côté montre).
 
+## Choix du sport et intégration tennis
+
+Avant de chercher, l'app téléphone demande d'abord **quel sport suivre**
+(`radioSport` dans `activity_main.xml`) :
+
+- **Football** → comportement historique, TheSportsDB, recherche par
+  équipe/joueur/ligue (sélecteur `radioSearchMode`, visible uniquement
+  dans ce mode)
+- **Tennis** → [Live Tennis API](https://livetennisapi.com), recherche
+  par **joueur uniquement** (pas d'équipe/ligue en tennis) — voir
+  `LiveTennisApi.kt`
+
+Le volley a été envisagé puis écarté : les API gratuites trouvées pour
+ce sport (ex. API-VOLLEYBALL) avaient une couverture jugée trop limitée
+pour être utile ici. Seul le tennis a été intégré.
+
+**Pourquoi Live Tennis API plutôt que TheSportsDB pour le tennis** :
+TheSportsDB ne modélise que `intHomeScore`/`intAwayScore` (un score
+global par équipe) et un champ texte libre `strResult`, non structuré et
+peu fiable pour cette question — pas de champ dédié au nombre de sets ni
+au score du set en cours. Live Tennis API renvoie au contraire un objet
+`score` structuré : `sets` (sets gagnés par chaque joueur), `games`
+(score du set en cours, par set), `points` (score du jeu en cours) et
+`server`. Voir https://docs.livetennisapi.com pour la référence complète.
+
+**Ce qui est fait** : le sélecteur de sport, la recherche de joueur, le
+chargement de ses matchs du jour (en direct + à venir) et le suivi
+(polling + envoi à la montre) via `MatchFollowService`/`WatchSync`, avec
+`homeScore`/`awayScore` portant le nombre de **sets** gagnés. En plus,
+sur la montre, le champ LONG_TEXT (emplacement central de Zenith)
+affiche désormais aussi le score de JEUX du set en cours quand le match
+est en direct (ex. `Alcaraz 2-1 Sinner · 3e set 4-3`) — `wear/MatchClock.kt`
+(fonction `tennisLabel`/`liveSetLabel`) déduit le numéro du set du nombre
+de sets déjà gagnés et met en forme `currentSetHomeGames`/
+`currentSetAwayGames`, reçus bruts du téléphone (`score.games`, dernier
+élément de chaque liste — voir `LiveTennisApi.parseMatch`). Statuts
+tennis traduits : "upcoming" → "À venir · HH:mm", "live" → le libellé de
+set ci-dessus (ou "En direct" si le score de jeux n'est pas encore
+connu), "completed" → "Terminé", "cancelled" → "Annulé".
+
+**Ce qui reste un TODO séparé** : afficher aussi le score du JEU en
+cours (`points`, ex. "30-15") — l'API le fournit déjà dans le même appel
+que `games`, mais rien ne le relaie encore côté téléphone ; et les
+rendus compacts (SMALL_IMAGE/MONOCHROMATIC_IMAGE/SHORT_TEXT) ne montrent
+toujours que le score de sets, sans le set en cours — manque de place
+plausible dans ces petits formats, pas vérifié sur la montre.
+
+**Clé API requise** : contrairement à la clé de test publique partagée
+de TheSportsDB, Live Tennis API exige une clé personnelle — gratuite
+mais nominative. Inscription sur
+https://livetennisapi.com/subscribe/free (email uniquement, aucune
+carte bancaire), clé affichée immédiatement sur
+https://livetennisapi.com/account. À reporter dans la constante
+`API_KEY` de `LiveTennisApi.kt` avant de builder — tel quel (valeur
+placeholder), toutes les recherches tennis échoueront silencieusement
+(401 → liste vide, "Aucun joueur trouvé").
+
+**Plan gratuit Live Tennis API — limite à connaître** : 30
+requêtes/minute **et seulement 100/jour**. Ce deuxième plafond n'existe
+pas chez TheSportsDB (juste 30/min, pas de limite journalière) — c'est
+pourquoi le suivi d'un match de tennis interroge l'API toutes les
+**3 minutes** au lieu de toutes les 60 secondes comme en foot (voir
+`MatchFollowService.pollIntervalMillis`) : à 60s, un seul match de 2-3h
+épuiserait à lui seul le quota du jour, recherches de joueurs comprises.
+
 ## Pourquoi pas de minute de jeu chiffrée
 
 TheSportsDB (plan gratuit, `lookupevent.php`/`eventsnext.php`/
@@ -96,6 +161,10 @@ que tu l'aies décidé.
 
 ## Limites connues
 
+- **Tennis : 100 requêtes/jour seulement (plan gratuit Live Tennis
+  API)** — voir "Choix du sport et intégration tennis" ci-dessus pour le
+  détail et l'intervalle de polling adapté en conséquence. Le volley n'a
+  pas été intégré, couverture jugée trop limitée côté API gratuites.
 - **Pas de minute chiffrée sans Premium** — voir section ci-dessus.
 - **Plan gratuit limité en résultats** : les recherches (équipe/joueur)
   ne renvoient souvent qu'1-2 résultats, et la recherche par ligue
@@ -176,9 +245,9 @@ sports-complication-watch/
 │       ├── kotlin/.../
 │       │   ├── ScoreComplicationService.kt
 │       │   ├── ComplicationImageComposer.kt   dessine les images combinées (2 logos + score) du SMALL_IMAGE, MONOCHROMATIC_IMAGE et SHORT_TEXT
-│       │   ├── MatchListenerService.kt   reçoit les données du téléphone (+ signal "cleared")
-│       │   ├── MatchClock.kt     traduit le statut TheSportsDB en français (sans calcul de minute)
-│       │   └── MatchScore.kt     modèle de données + cache en mémoire
+│       │   ├── MatchListenerService.kt   reçoit les données du téléphone (+ sport, + signal "cleared")
+│       │   ├── MatchClock.kt     traduit le statut foot (TheSportsDB) OU tennis (Live Tennis API) en français, + score du set en cours en tennis
+│       │   └── MatchScore.kt     modèle de données (+ sport, + score du set en cours) + cache en mémoire
 │       └── res/                  icônes, strings
 ├── mobile/
 │   ├── build.gradle.kts          dépendances du module téléphone
@@ -186,16 +255,17 @@ sports-complication-watch/
 │   └── src/main/
 │       ├── AndroidManifest.xml   déclare MainActivity + MatchFollowService
 │       ├── kotlin/.../
-│       │   ├── MainActivity.kt          recherche (équipe/joueur/ligue) → sélection → démarre le suivi
-│       │   ├── MatchFollowService.kt    foreground service : polling + envoi montre en arrière-plan
+│       │   ├── MainActivity.kt          choix du sport (foot/tennis) → recherche → sélection → démarre le suivi
+│       │   ├── MatchFollowService.kt    foreground service : polling (60s foot / 3min tennis) + envoi montre en arrière-plan
 │       │   ├── WatchSync.kt             envoi vers la montre (partagé Activity/Service)
-│       │   ├── FollowedMatchPrefs.kt    persiste le match suivi pour ré-afficher la carte au retour
-│       │   ├── SportsDbApi.kt           client TheSportsDB (équipes, joueurs, ligues, matchs, logos)
-│       │   ├── Models.kt                TeamResult / PlayerResult / LeagueResult / MatchResult
-│       │   ├── SimpleListAdapter.kt     liste générique (équipes, joueurs, ligues)
+│       │   ├── FollowedMatchPrefs.kt    persiste le match suivi (+ sport) pour ré-afficher la carte au retour
+│       │   ├── SportsDbApi.kt           client TheSportsDB — foot (équipes, joueurs, ligues, matchs, logos)
+│       │   ├── LiveTennisApi.kt         client Live Tennis API — tennis (joueurs, matchs, score par sets)
+│       │   ├── Models.kt                Sport / TeamResult / PlayerResult / TennisPlayerResult / LeagueResult / MatchResult
+│       │   ├── SimpleListAdapter.kt     liste générique (équipes, joueurs de foot ou de tennis, ligues)
 │       │   └── MatchesAdapter.kt
 │       └── res/
-│           ├── layout/    activity_main, item_team, item_match
+│           ├── layout/    activity_main (radioSport + radioSearchMode), item_team, item_match
 │           └── drawable/  ic_notification.xml (icône de la notification de suivi)
 └── .github/workflows/build.yml   build CI (Java 17, Android SDK, Gradle 8.9)
 ```

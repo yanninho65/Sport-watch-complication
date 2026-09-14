@@ -47,7 +47,8 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
  * environ chaque minute même sans nouvelle donnée du téléphone — utile
  * si jamais un rafraîchissement système est nécessaire, même si
  * MatchClock n'a plus de minute à recalculer par lui-même (voir
- * MatchClock.kt : le statut affiché vient tel quel de TheSportsDB).
+ * MatchClock.kt : le statut affiché vient tel quel de TheSportsDB en
+ * football, de Live Tennis API en tennis).
  */
 class ScoreComplicationService : ComplicationDataSourceService() {
 

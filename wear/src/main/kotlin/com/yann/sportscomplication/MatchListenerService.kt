@@ -48,6 +48,20 @@ class MatchListenerService : WearableListenerService() {
                 val awayTeam = dataMap.getString("awayTeam") ?: continue
                 val homeScore = dataMap.getString("homeScore")?.toIntOrNull()
                 val awayScore = dataMap.getString("awayScore")?.toIntOrNull()
+                // Repli FOOTBALL : un téléphone avec une version de l'app
+                // antérieure à l'introduction du tennis n'enverrait pas
+                // cette clé.
+                val sport = dataMap.getString("sport") ?: "FOOTBALL"
+                val currentSetHomeGames = if (dataMap.containsKey("currentSetHomeGames")) {
+                    dataMap.getInt("currentSetHomeGames")
+                } else {
+                    null
+                }
+                val currentSetAwayGames = if (dataMap.containsKey("currentSetAwayGames")) {
+                    dataMap.getInt("currentSetAwayGames")
+                } else {
+                    null
+                }
                 val status = dataMap.getString("status").orEmpty()
                 val kickoff = if (dataMap.containsKey("kickoffEpochMillis")) {
                     dataMap.getLong("kickoffEpochMillis")
@@ -60,10 +74,13 @@ class MatchListenerService : WearableListenerService() {
                     awayTeam = awayTeam,
                     homeScore = homeScore,
                     awayScore = awayScore,
+                    currentSetHomeGames = currentSetHomeGames,
+                    currentSetAwayGames = currentSetAwayGames,
                     status = status,
                     kickoffEpochMillis = kickoff,
                     homeLogo = decodeLogo(dataMap, "homeLogo"),
-                    awayLogo = decodeLogo(dataMap, "awayLogo")
+                    awayLogo = decodeLogo(dataMap, "awayLogo"),
+                    sport = sport
                 )
 
                 requestComplicationRefresh()
