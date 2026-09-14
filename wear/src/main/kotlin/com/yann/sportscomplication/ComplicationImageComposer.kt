@@ -14,86 +14,74 @@ import android.graphics.RectF
  * destinées aux complications qui ne peuvent pas afficher texte et image
  * séparément.
  *
- * Trois formats :
- *  - [composeCombined] : cercle en couleur (Dashboard Samsung, SMALL_IMAGE).
- *  - [composeMonochromeWide] : rectangle large en silhouette blanche
- *    (emplacement MONOCHROMATIC_IMAGE).
+ * Deux formats, tous les deux en rectangle large (logo domicile à gauche,
+ * score au centre, logo extérieur à droite) — même agencement, seule la
+ * teinte change :
+ *  - [composeColorWide] : SMALL_IMAGE, couleurs d'origine des logos
+ *    conservées, pas de fond peint (le fond de la case hôte suffit).
+ *  - [composeMonochromeWide] : MONOCHROMATIC_IMAGE, silhouette blanche sur
+ *    fond transparent — le système applique sa propre teinte par-dessus.
  *  - [composeMonochromeIcon] : icône carrée en silhouette, sans texte
  *    (emplacement SHORT_TEXT — le score passe par le champ texte séparé,
  *    voir ScoreComplicationService — ex. les petits rectangles Zenith).
  *
- * Le système recadre les SMALL_IMAGE de type PHOTO en cercle (voir
- * ScoreComplicationService). Tout le contenu important est donc placé sur
- * la bande horizontale qui passe par le centre — c'est la corde la plus
- * large du cercle — pour ne rien perdre au recadrage : logo domicile à
- * gauche, score au centre, logo extérieur à droite. Un fond circulaire
- * plein est peint en dessous pour garantir un contraste correct quel que
- * soit le cadran ou le thème derrière la complication.
- *
- * Le résultat est petit et dense (le cercle du Dashboard est minuscule à
- * l'écran) — pour un score à deux chiffres des deux côtés, les logos et
- * le texte se touchent presque. C'est un compromis assumé : tout faire
- * tenir dans un seul cercle laisse forcément moins de place à chaque
- * élément qu'avec deux cercles séparés (mode SIDE_HOME / SIDE_AWAY).
+ * Ancienne version : [composeColorWide] dessinait un cercle plein
+ * (Dashboard Samsung, cases circulaires). Abandonné — Yann ne s'en sert
+ * plus — au profit du rectangle large, qui correspond à l'usage actuel
+ * (petits rectangles Zenith). Un cercle scale mal dans un rectangle large :
+ * en aperçu (mode "contain"), il rapetissait au point de rendre les logos
+ * illisibles, ne laissant que le texte du score visible au centre.
  */
 object ComplicationImageComposer {
 
-    private const val SIZE = 320
-    private const val CENTER = SIZE / 2f
-    private const val RADIUS = SIZE / 2f
-    private const val LOGO_SIZE = 80f
-    private const val LOGO_OFFSET_X = 90f
-    private const val SCORE_TEXT_SIZE = 34f
-
-    // Format "petit rectangle large" (ex. bande d'icônes au-dessus de la
-    // carte notification sur le visage testé) — MONOCHROMATIC_IMAGE, donc
-    // pas de fond peint : seule la silhouette compte, le système applique
-    // sa propre teinte par-dessus les pixels opaques.
+    // Rectangle large partagé par composeColorWide et composeMonochromeWide.
     private const val WIDE_WIDTH = 480
     private const val WIDE_HEIGHT = 200
     private const val WIDE_CENTER_Y = WIDE_HEIGHT / 2f
     private const val WIDE_LOGO_SIZE = 150f
     private const val WIDE_LOGO_MARGIN = 8f
     private const val WIDE_SCORE_TEXT_SIZE = 84f
+    private const val WIDE_SCORE_STROKE_WIDTH = 6f
 
     // Icône carrée pour SHORT_TEXT (ex. les petits rectangles Zenith qui
-    // n'acceptent pas MONOCHROMATIC_IMAGE) — les deux logos côte à côte en
-    // silhouette, sans score ni fond : le score passe par le champ texte
-    // du SHORT_TEXT lui-même (voir ScoreComplicationService).
+    // n'acceptent pas MONOCHROMATIC_IMAGE/SMALL_IMAGE) — les deux logos
+    // côte à côte en silhouette, sans score ni fond : le score passe par
+    // le champ texte du SHORT_TEXT lui-même (voir ScoreComplicationService).
     private const val ICON_SIZE = 128
     private const val ICON_CENTER_Y = ICON_SIZE / 2f
     private const val ICON_LOGO_SIZE = 100f
     private const val ICON_LOGO_MARGIN = 4f
 
-    fun composeCombined(match: MatchScore?): Bitmap {
-        val bitmap = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
+    /**
+     * Compose l'image rectangulaire large en couleur (logos d'origine,
+     * non recolorés), destinée à un emplacement SMALL_IMAGE de type
+     * "petit rectangle" — logo domicile à gauche, score au centre, logo
+     * extérieur à droite. Pas de fond peint : la case hôte (Zenith,
+     * fond sombre arrondi) fournit déjà le contraste ; un contour noir
+     * derrière le texte du score garantit la lisibilité au cas où.
+     */
+    fun composeColorWide(match: MatchScore?): Bitmap {
+        val bitmap = Bitmap.createBitmap(WIDE_WIDTH, WIDE_HEIGHT, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
 
-        val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.parseColor("#1B1F27")
-        }
-        canvas.drawCircle(CENTER, CENTER, RADIUS, backgroundPaint)
+        val logoHalf = WIDE_LOGO_SIZE / 2f
+        val homeCenterX = logoHalf + WIDE_LOGO_MARGIN
+        val awayCenterX = WIDE_WIDTH - logoHalf - WIDE_LOGO_MARGIN
 
-        drawLogo(canvas, match?.homeLogo, CENTER - LOGO_OFFSET_X, CENTER)
-        drawLogo(canvas, match?.awayLogo, CENTER + LOGO_OFFSET_X, CENTER)
-        drawScoreText(canvas, scoreText(match))
+        drawColorLogo(canvas, match?.homeLogo, homeCenterX, WIDE_CENTER_Y, logoHalf)
+        drawColorLogo(canvas, match?.awayLogo, awayCenterX, WIDE_CENTER_Y, logoHalf)
+        drawWideScoreText(canvas, scoreText(match), withStroke = true)
 
         return bitmap
     }
 
     /**
-     * Compose une image rectangulaire large en un seul ton (silhouette
-     * blanche sur fond transparent), destinée à un emplacement
-     * MONOCHROMATIC_IMAGE de type "petit rectangle" — logo domicile à
-     * gauche, score au centre, logo extérieur à droite.
-     *
-     * Contrairement à [composeCombined] (SMALL_IMAGE, cercle, couleurs
-     * d'origine conservées), ici tout doit être une silhouette blanche
-     * opaque sur fond transparent : c'est la convention attendue par
-     * ComplicationType.MONOCHROMATIC_IMAGE, le système applique ensuite sa
-     * propre teinte par-dessus (voir [drawMonochromeLogo]). Pas de fond
-     * peint non plus, pour ne pas apparaître comme un bloc plein une fois
-     * teinté.
+     * Même agencement que [composeColorWide], mais en silhouette blanche
+     * sur fond transparent — convention attendue par
+     * ComplicationType.MONOCHROMATIC_IMAGE, le système applique ensuite
+     * sa propre teinte par-dessus (voir [drawMonochromeLogo]). Pas de
+     * contour sur le texte ici : une fois teinté, remplissage et contour
+     * deviendraient indiscernables (même opacité, même couleur finale).
      */
     fun composeMonochromeWide(match: MatchScore?): Bitmap {
         val bitmap = Bitmap.createBitmap(WIDE_WIDTH, WIDE_HEIGHT, Bitmap.Config.ARGB_8888)
@@ -105,17 +93,16 @@ object ComplicationImageComposer {
 
         drawMonochromeLogo(canvas, match?.homeLogo, homeCenterX, WIDE_CENTER_Y, logoHalf)
         drawMonochromeLogo(canvas, match?.awayLogo, awayCenterX, WIDE_CENTER_Y, logoHalf)
-        drawWideScoreText(canvas, scoreText(match))
+        drawWideScoreText(canvas, scoreText(match), withStroke = false)
 
         return bitmap
     }
 
     /**
      * Compose l'icône carrée (deux logos côte à côte, en silhouette, sans
-     * texte) utilisée par le SHORT_TEXT — voir [WIDE_LOGO_MARGIN] et la
-     * note de tête de classe. Le score n'est pas dans l'image : il passe
-     * par le champ texte du SHORT_TEXT (limité à 7 caractères, largement
-     * suffisant pour "2-1" ou "vs").
+     * texte) utilisée par le SHORT_TEXT. Le score n'est pas dans l'image :
+     * il passe par le champ texte du SHORT_TEXT (limité à 7 caractères,
+     * largement suffisant pour "2-1" ou "vs").
      */
     fun composeMonochromeIcon(match: MatchScore?): Bitmap {
         val bitmap = Bitmap.createBitmap(ICON_SIZE, ICON_SIZE, Bitmap.Config.ARGB_8888)
@@ -129,6 +116,22 @@ object ComplicationImageComposer {
         drawMonochromeLogo(canvas, match?.awayLogo, awayCenterX, ICON_CENTER_Y, logoHalf)
 
         return bitmap
+    }
+
+    private fun drawColorLogo(canvas: Canvas, logo: Bitmap?, centerX: Float, centerY: Float, half: Float) {
+        if (logo != null) {
+            val dest = RectF(centerX - half, centerY - half, centerX + half, centerY + half)
+            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
+            canvas.drawBitmap(logo, null, dest, paint)
+        } else {
+            // Pas de logo reçu (téléchargement échoué côté téléphone, ou
+            // aucun match) : simple pastille de substitution plutôt que de
+            // laisser un trou dans l'image.
+            val placeholderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#3A4150")
+            }
+            canvas.drawCircle(centerX, centerY, half, placeholderPaint)
+        }
     }
 
     private fun drawMonochromeLogo(canvas: Canvas, logo: Bitmap?, centerX: Float, centerY: Float, half: Float) {
@@ -147,7 +150,7 @@ object ComplicationImageComposer {
             canvas.drawBitmap(logo, null, dest, paint)
         } else {
             // Pas de logo reçu : pastille semi-transparente plutôt qu'un
-            // trou, cohérente avec le placeholder du mode cercle.
+            // trou, cohérente avec le placeholder de la version couleur.
             val placeholderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
                 color = Color.WHITE
                 alpha = 90
@@ -156,17 +159,29 @@ object ComplicationImageComposer {
         }
     }
 
-    private fun drawWideScoreText(canvas: Canvas, text: String) {
-        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+    private fun drawWideScoreText(canvas: Canvas, text: String, withStroke: Boolean) {
+        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = Color.WHITE
             textSize = WIDE_SCORE_TEXT_SIZE
             isFakeBoldText = true
             textAlign = Paint.Align.CENTER
         }
         val bounds = Rect()
-        paint.getTextBounds(text, 0, text.length, bounds)
+        fillPaint.getTextBounds(text, 0, text.length, bounds)
         val baselineY = WIDE_CENTER_Y - bounds.exactCenterY()
-        canvas.drawText(text, WIDE_WIDTH / 2f, baselineY, paint)
+        if (withStroke) {
+            // Contour noir derrière le remplissage blanc : lisible sur
+            // n'importe quel fond de case, puisque cette version couleur
+            // n'est jamais retintée par le système (contrairement à
+            // MONOCHROMATIC_IMAGE, où stroke et fill fusionneraient).
+            val strokePaint = Paint(fillPaint).apply {
+                style = Paint.Style.STROKE
+                strokeWidth = WIDE_SCORE_STROKE_WIDTH
+                color = Color.BLACK
+            }
+            canvas.drawText(text, WIDE_WIDTH / 2f, baselineY, strokePaint)
+        }
+        canvas.drawText(text, WIDE_WIDTH / 2f, baselineY, fillPaint)
     }
 
     private fun scoreText(match: MatchScore?): String {
@@ -175,44 +190,5 @@ object ComplicationImageComposer {
         } else {
             "vs"
         }
-    }
-
-    private fun drawLogo(canvas: Canvas, logo: Bitmap?, centerX: Float, centerY: Float) {
-        val half = LOGO_SIZE / 2f
-        if (logo != null) {
-            val dest = RectF(centerX - half, centerY - half, centerX + half, centerY + half)
-            val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
-            canvas.drawBitmap(logo, null, dest, paint)
-        } else {
-            // Pas de logo reçu (téléchargement échoué côté téléphone, ou
-            // aucun match) : simple pastille de substitution plutôt que de
-            // laisser un trou dans l'image.
-            val placeholderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-                color = Color.parseColor("#3A4150")
-            }
-            canvas.drawCircle(centerX, centerY, half, placeholderPaint)
-        }
-    }
-
-    private fun drawScoreText(canvas: Canvas, text: String) {
-        val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.WHITE
-            textSize = SCORE_TEXT_SIZE
-            isFakeBoldText = true
-            textAlign = Paint.Align.CENTER
-        }
-        // Contour noir derrière le remplissage blanc : lisible même si le
-        // fond circulaire (#1B1F27) est partiellement recouvert par les
-        // logos tout proches.
-        val strokePaint = Paint(fillPaint).apply {
-            style = Paint.Style.STROKE
-            strokeWidth = 5f
-            color = Color.BLACK
-        }
-        val bounds = Rect()
-        fillPaint.getTextBounds(text, 0, text.length, bounds)
-        val baselineY = CENTER - bounds.exactCenterY()
-        canvas.drawText(text, CENTER, baselineY, strokePaint)
-        canvas.drawText(text, CENTER, baselineY, fillPaint)
     }
 }

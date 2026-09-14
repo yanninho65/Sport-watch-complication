@@ -21,9 +21,14 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
  * Quatre types sont supportés (voir AndroidManifest.xml) :
  *  - LONG_TEXT          : pour l'emplacement central de Zenith
  *                         (ex. "PSG 2-1 OM · 64'")
- *  - SMALL_IMAGE        : pour les complications cercle du Dashboard Samsung
- *                         (image composée réunissant les deux logos ET le
- *                         score, en couleur — voir ComplicationImageComposer)
+ *  - SMALL_IMAGE        : pour un emplacement "petit rectangle" qui accepte
+ *                         une image en couleur (image composée réunissant
+ *                         les deux logos ET le score, couleurs d'origine —
+ *                         voir ComplicationImageComposer.composeColorWide).
+ *                         Servait auparavant aux cercles du Dashboard
+ *                         Samsung (image carrée recadrée en cercle) ; ce
+ *                         mode a été abandonné (plus utilisé) au profit du
+ *                         seul rendu rectangle large.
  *  - MONOCHROMATIC_IMAGE : pour un emplacement qui n'accepte que du
  *                         monochrome et affiche une seule image (logos +
  *                         score composés en silhouette — voir
@@ -111,7 +116,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
     }
 
     private fun buildSmallImage(match: MatchScore?): ComplicationData {
-        val icon = Icon.createWithBitmap(ComplicationImageComposer.composeCombined(match))
+        val icon = Icon.createWithBitmap(ComplicationImageComposer.composeColorWide(match))
 
         val description = match?.let {
             val scoreText = if (it.homeScore != null && it.awayScore != null) {

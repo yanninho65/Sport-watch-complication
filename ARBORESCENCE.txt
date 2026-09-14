@@ -1,36 +1,40 @@
 Arborescence des fichiers livrés dans ce zip — à extraire à la racine
 du dépôt Sport-watch-complication (écrase les fichiers existants).
-Aucun fichier à supprimer cette fois-ci.
+Aucun fichier à supprimer cette fois-ci. AndroidManifest.xml n'est PAS
+concerné par cette livraison (aucun type ne change) : seul le rendu de
+SMALL_IMAGE change.
 
-complication-short-text-zenith.zip
+complication-small-image-rectangle.zip
 ├── README.md                                                  [modifié]
-├── wear/src/main/AndroidManifest.xml                          [modifié]
 ├── wear/src/main/kotlin/.../ComplicationImageComposer.kt      [modifié]
 └── wear/src/main/kotlin/.../ScoreComplicationService.kt       [modifié]
 
 Pourquoi ce changement :
-- La fiche Play Store de Zenith confirme que ses complications
-  n'acceptent que SHORT_TEXT / LONG_TEXT / RANGED_VALUE /
-  MONOCHROMATIC_ICON, réparties par emplacement (pas tous les types
-  partout). Le petit rectangle testé n'accepte pas MONOCHROMATIC_IMAGE
-  (ce qui explique pourquoi "Score en direct" n'apparaissait pas dans
-  son sélecteur, même après réinstallation et redémarrage) — mais
-  accepte SHORT_TEXT, comme Brief / Phone battery / WhatsApp qui s'y
-  affichent déjà.
+- Le cercle Dashboard Samsung (ancien usage de SMALL_IMAGE) n'est plus
+  utilisé.
+- Assigné à la case de gauche du bandeau Zenith (SMALL_IMAGE), l'ancienne
+  image carrée pensée pour un recadrage circulaire ne s'affichait pas
+  bien dans ce rectangle large : le score apparaissait seul, écrasé au
+  centre, les deux logos disparaissant hors cadre/hors échelle.
+- Android ne transmet pas à l'appli la forme de l'emplacement qui
+  demande l'image : impossible de garder deux rendus SMALL_IMAGE
+  différents (cercle ET rectangle) en même temps. Yann n'utilisant plus
+  le Dashboard, SMALL_IMAGE passe entièrement au rendu rectangle large.
 
 Ce que ça change :
-- Nouveau type supporté : SHORT_TEXT.
-- ComplicationImageComposer.composeMonochromeIcon() compose une petite
-  icône carrée (128x128) : les deux logos en silhouette côte à côte,
-  SANS le score dedans.
-- Le score (ex. "2-1") passe par le champ texte natif du SHORT_TEXT
-  (limite API : 7 caractères, largement suffisant).
-- ScoreComplicationService répond maintenant à LONG_TEXT, SMALL_IMAGE,
-  MONOCHROMATIC_IMAGE ET SHORT_TEXT (les deux derniers restent utiles
-  pour d'autres visages/emplacements qui les accepteraient).
-- README.md mis à jour en conséquence.
+- ComplicationImageComposer.composeColorWide() remplace l'ancien
+  composeCombined() (cercle) : même agencement que le format
+  monochrome large (logo domicile — score — logo extérieur, 480x200),
+  mais en couleurs d'origine des logos, sans fond peint (fond de la
+  case hôte suffit), avec un contour noir derrière le score pour la
+  lisibilité (utile puisque cette version n'est jamais retintée par le
+  système, contrairement à MONOCHROMATIC_IMAGE).
+- ScoreComplicationService.buildSmallImage() appelle composeColorWide()
+  au lieu de composeCombined().
+- README.md mis à jour (description, état actuel, limites connues,
+  étapes de test) — plus aucune mention du Dashboard/cercle.
 
-À tester sur la montre : sur Zenith, assigne "Score en direct" au
-petit rectangle concerné — SHORT_TEXT devrait maintenant apparaître
-dans le sélecteur, avec l'icône (2 logos) à gauche et le score à
-droite, comme Phone battery.
+À tester sur la montre : réassigne "Score en direct" à la case de
+gauche (SMALL_IMAGE) sur Zenith — elle devrait maintenant montrer les
+deux logos en couleur de part et d'autre du score, sur toute la largeur
+du rectangle, au lieu du score seul écrasé au centre.

@@ -3,9 +3,9 @@
 Complication Wear OS qui affiche le score d'un match en direct :
 - **LONG_TEXT** → pour l'emplacement central du visage Zenith
   (ex. `PSG 2-1 OM · 1ère MT`)
-- **SMALL_IMAGE** → pour les complications cercle du Dashboard Samsung
-  (image composée réunissant les deux logos d'équipe ET le score dans
-  un seul cercle, voir `ComplicationImageComposer`)
+- **SMALL_IMAGE** → pour un emplacement "petit rectangle" qui accepte une
+  image en couleur (image composée réunissant les deux logos d'équipe ET
+  le score, couleurs d'origine conservées, voir `ComplicationImageComposer`)
 - **MONOCHROMATIC_IMAGE** → pour un emplacement "petit rectangle" qui
   n'accepte que du monochrome (ex. bande au-dessus de la carte
   notification) — même principe, logos et score composés en silhouette
@@ -23,11 +23,13 @@ Deux modules dans ce repo :
 ## État actuel
 
 **Montre (`wear/`)** : `ScoreComplicationService` répond aux quatre types
-de complications. Pour SMALL_IMAGE, `ComplicationImageComposer` dessine
-à la volée une image carrée unique (logo domicile à gauche, score au
-centre, logo extérieur à droite, fond circulaire sombre pour la
-lisibilité) — le système la recadre en cercle, tout est donc positionné
-sur la bande horizontale centrale pour ne rien perdre au recadrage.
+de complications. Pour SMALL_IMAGE, `ComplicationImageComposer` compose
+une image rectangulaire large (logo domicile à gauche, score au centre,
+logo extérieur à droite), en couleurs d'origine, sans fond peint — le
+fond sombre de la case hôte suffit, et un contour noir derrière le score
+garantit la lisibilité quel que soit le fond. (Ancienne version : une
+image carrée recadrée en cercle pour le Dashboard Samsung — abandonnée,
+un cercle scale mal dans un rectangle large.)
 Pour MONOCHROMATIC_IMAGE, `ComplicationImageComposer` compose une image
 rectangulaire large avec le même agencement (logo domicile, score, logo
 extérieur), mais en silhouette blanche uniquement — les logos couleur
@@ -113,11 +115,16 @@ que tu l'aies décidé.
   s'arrête de façon inattendue, désactiver l'optimisation de batterie
   pour cette app (Paramètres > Batterie > Sports Complication > Non
   optimisée).
-- **Image cercle dense** : le cercle du Dashboard est minuscule à
-  l'écran, et `ComplicationImageComposer` y fait tenir deux logos ET
-  le score. Pour un score à deux chiffres des deux côtés (ex.
-  "12-9"), logos et texte se touchent presque — reste lisible mais
-  c'est un compromis assumé, pas un bug.
+- **Icône SHORT_TEXT limitée à un seul élément** : le champ icône d'un
+  SHORT_TEXT (petits rectangles Zenith) ne peut afficher qu'une seule
+  image simple — impossible d'y faire tenir lisiblement deux logos, d'où
+  le choix de `composeMonochromeIcon` : voir la discussion dans le repo
+  pour le compromis retenu (icône simplifiée, score en texte).
+- **Aucune information sur l'emplacement cible** : Android ne transmet
+  pas à `ComplicationDataSourceService` la forme/taille de l'emplacement
+  qui demande les données — deux emplacements SMALL_IMAGE différents
+  reçoivent forcément la même image. Un seul rendu SMALL_IMAGE est donc
+  possible à la fois pour toute l'app (voir "État actuel" ci-dessus).
 
 ## Compiler sans Android Studio
 
@@ -199,14 +206,13 @@ sert qu'à l'organisation du code Kotlin, diffère).
 Une fois l'APK `wear` installé :
 1. Sur le visage **Zenith**, assigne la complication "Score en direct" à
    l'emplacement central (type LONG_TEXT)
-2. Sur le **Dashboard** Samsung, assigne-la à une des complications
-   cercle (type SMALL_IMAGE) — aucune config ne s'affiche, le cercle
-   montrera directement les deux logos + le score
-3. Sur un emplacement "petit rectangle" qui n'accepte que du monochrome,
-   assigne-la (type MONOCHROMATIC_IMAGE ou SHORT_TEXT selon ce que
-   l'emplacement propose — sur Zenith spécifiquement, c'est SHORT_TEXT :
-   icône avec les deux logos + score en texte à côté)
-4. Cherche un match dans l'app téléphone (équipe, joueur ou ligue) et
+2. Sur les petits rectangles de Zenith, teste les types proposés selon
+   l'emplacement : SHORT_TEXT (icône avec les deux logos en silhouette +
+   score en texte à côté, ex. `2-1`), SMALL_IMAGE (rectangle large en
+   couleur, logo — score — logo) ou MONOCHROMATIC_IMAGE (même agencement
+   en silhouette teintée par le système) — aucune config ne s'affiche à
+   l'assignation, quel que soit le type retenu
+3. Cherche un match dans l'app téléphone (équipe, joueur ou ligue) et
    sélectionne-le — la montre devrait se mettre à jour en quelques
    secondes, puis continuer à se rafraîchir toutes les minutes, même si
    tu fermes l'app téléphone. Le bouton "Arrêter le suivi" dans l'app
