@@ -5,17 +5,35 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.gms.wearable.Asset
 import com.google.android.gms.wearable.PutDataMapRequest
 import com.google.android.gms.wearable.Wearable
 import com.yann.sportscomplication.mobile.databinding.ActivityMainBinding
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
+    /** Boucle de rafraîchissement du match actuellement suivi, s'il y en a un. */
+    private var followJob: Job? = null
+
+    /**
+     * Logos mis en cache après le premier envoi, pour ne pas les
+     * retélécharger à chaque tick du polling — on les rejoint à chaque
+     * mise à jour envoyée pour que la montre garde toujours l'image
+     * (chaque nouvelle donnée reçue remplace entièrement l'ancienne côté
+     * montre, assets compris).
+     */
+    private var cachedHomeLogo: Asset? = null
+    private var cachedAwayLogo: Asset? = null
+
     companion object {
         private const val MATCH_PATH = "/match"
+        private const val POLL_INTERVAL_MS = 60_000L
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -81,31 +99,79 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onMatchSelected(match: MatchResult) {
-        // TODO(prochaine étape) : envoyer aussi les logos des deux équipes
-        // (téléchargés + convertis en Asset) — pour l'instant seul le
-        // texte est transmis, la montre garde son icône placeholder.
+        followJob?.cancel()
+        cachedHomeLogo = null
+        cachedAwayLogo = null
+
+        followJob = lifecycleScope.launch {
+            // Premier envoi : télécharge les logos et les met en cache.
+            fetchLogos(match)
+            sendMatchToWatch(match)
+            Toast.makeText(this@MainActivity, "Envoyé à la montre : ${match.title}", Toast.LENGTH_SHORT).show()
+
+            // Rafraîchissement périodique tant que le match n'est pas terminé.
+            var current = match
+            while (isActive && !current.isFinished) {
+                delay(POLL_INTERVAL_MS)
+                val updated = try {
+                    SportsDbApi.lookupEvent(current.id)
+                } catch (e: Exception) {
+                    null
+                } ?: continue
+
+                if (updated != current) {
+                    sendMatchToWatch(updated)
+                    current = updated
+                }
+            }
+        }
+    }
+
+    private suspend fun fetchLogos(match: MatchResult) {
+        cachedHomeLogo = match.idHomeTeam?.let { downloadLogoAsset(it) }
+        cachedAwayLogo = match.idAwayTeam?.let { downloadLogoAsset(it) }
+    }
+
+    private suspend fun downloadLogoAsset(teamId: String): Asset? {
+        val url = try {
+            SportsDbApi.getTeamBadgeUrl(teamId)
+        } catch (e: Exception) {
+            null
+        } ?: return null
+
+        val bytes = try {
+            SportsDbApi.downloadBytes(url)
+        } catch (e: Exception) {
+            null
+        } ?: return null
+
+        return Asset.createFromBytes(bytes)
+    }
+
+    private fun sendMatchToWatch(match: MatchResult) {
         val request = PutDataMapRequest.create(MATCH_PATH).apply {
             dataMap.putString("homeTeam", match.homeTeam)
             dataMap.putString("awayTeam", match.awayTeam)
             dataMap.putString("homeScore", match.homeScore ?: "")
             dataMap.putString("awayScore", match.awayScore ?: "")
-            dataMap.putString("minute", match.minuteLabel)
-            // Force un DataChanged même si un match identique est
-            // resélectionné (la Data Layer API ignore un putDataItem dont
-            // le contenu n'a pas changé depuis le dernier envoi).
+            dataMap.putString("status", match.status)
+            match.kickoffEpochMillis?.let { dataMap.putLong("kickoffEpochMillis", it) }
+            cachedHomeLogo?.let { dataMap.putAsset("homeLogo", it) }
+            cachedAwayLogo?.let { dataMap.putAsset("awayLogo", it) }
+            // Force un DataChanged même si le contenu texte n'a pas bougé
+            // depuis le dernier envoi (la Data Layer API ignore sinon un
+            // putDataItem identique au précédent).
             dataMap.putLong("timestamp", System.currentTimeMillis())
         }.asPutDataRequest().setUrgent()
 
         Wearable.getDataClient(this).putDataItem(request)
-            .addOnSuccessListener {
-                Toast.makeText(this, "Envoyé à la montre : ${match.title}", Toast.LENGTH_SHORT).show()
-            }
             .addOnFailureListener {
                 Toast.makeText(this, "Échec de l'envoi vers la montre", Toast.LENGTH_SHORT).show()
             }
     }
 
     private fun showSearchState() {
+        followJob?.cancel()
         binding.buttonBackToSearch.visibility = android.view.View.GONE
         binding.textStatus.text = "Cherche une équipe pour commencer"
         binding.recyclerView.adapter = null

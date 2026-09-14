@@ -19,14 +19,16 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
  *  - LONG_TEXT   : pour l'emplacement central de Zenith
  *                  (ex. "PSG 2-1 OM · 64'")
  *  - SMALL_IMAGE : pour les complications cercle du Dashboard Samsung
- *                  (logo de l'équipe, en couleur)
+ *                  (logo d'équipe en couleur — domicile ou extérieur
+ *                  selon la préférence de CET emplacement précis, voir
+ *                  TeamSideConfigActivity / TeamSidePrefs)
  *
- * Étape actuelle (squelette) : les données viennent d'un cache statique en
- * mémoire (MatchScoreStore), pas encore alimenté par le téléphone. La
- * prochaine étape branchera ce cache sur un WearableListenerService qui
- * recevra les mises à jour via la Wear Data Layer API, et déclenchera un
- * ComplicationDataSourceUpdateRequester pour forcer le rafraîchissement
- * immédiat des complications actives.
+ * Les données viennent de MatchScoreStore, alimenté par
+ * MatchListenerService (Wear Data Layer API). UPDATE_PERIOD_SECONDS=60
+ * dans le manifest fait que le système rappelle onComplicationRequest
+ * environ chaque minute même sans nouvelle donnée du téléphone — ça
+ * permet à MatchClock de recalculer une minute de jeu à jour sans
+ * dépendre d'un renvoi du téléphone à chaque tick.
  */
 class ScoreComplicationService : ComplicationDataSourceService() {
 
@@ -38,7 +40,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
 
         val data: ComplicationData = when (request.complicationType) {
             ComplicationType.LONG_TEXT -> buildLongText(match)
-            ComplicationType.SMALL_IMAGE -> buildSmallImage(match)
+            ComplicationType.SMALL_IMAGE -> buildSmallImage(match, request.complicationInstanceId)
             else -> NoDataComplicationData()
         }
 
@@ -54,13 +56,14 @@ class ScoreComplicationService : ComplicationDataSourceService() {
             awayTeam = "OM",
             homeScore = 2,
             awayScore = 1,
-            minute = "64'",
-            homeLogoResId = R.drawable.ic_score_complication,
-            awayLogoResId = R.drawable.ic_score_complication
+            status = "1H",
+            kickoffEpochMillis = System.currentTimeMillis() - 20 * 60_000L,
+            homeLogo = null,
+            awayLogo = null
         )
         return when (type) {
             ComplicationType.LONG_TEXT -> buildLongText(preview)
-            ComplicationType.SMALL_IMAGE -> buildSmallImage(preview)
+            ComplicationType.SMALL_IMAGE -> buildSmallImage(preview, complicationInstanceId = -1)
             else -> null
         }
     }
@@ -81,7 +84,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
         } else {
             "vs"
         }
-        val text = "${match.homeTeam} $scoreText ${match.awayTeam} · ${match.minute}"
+        val text = "${match.homeTeam} $scoreText ${match.awayTeam} · ${MatchClock.label(match)}"
 
         return LongTextComplicationData.Builder(
             text = PlainComplicationText.Builder(text).build(),
@@ -89,25 +92,26 @@ class ScoreComplicationService : ComplicationDataSourceService() {
         ).build()
     }
 
-    private fun buildSmallImage(match: MatchScore?): ComplicationData {
-        // TODO(intégration téléphone) : remplacer la resource locale par le
-        // vrai logo de l'équipe à domicile, téléchargé depuis TheSportsDB
-        // et fourni ici via Icon.createWithBitmap(...) plutôt que
-        // createWithResource(...).
-        //
-        // Choix de SmallImageType.PHOTO plutôt que ICON : PHOTO garantit
-        // que la couleur d'origine du logo n'est jamais teintée par le
-        // thème du cadran. Contrepartie : ce type de complication ne
-        // s'affiche pas en mode Always-On Display (écran éteint/veille),
-        // seulement en mode interactif. Si l'affichage en AOD s'avère
-        // important, on pourra reconsidérer ICON malgré la teinte.
-        val logoResId = match?.homeLogoResId ?: R.drawable.ic_score_complication
-        val icon = Icon.createWithResource(this, logoResId)
+    private fun buildSmallImage(match: MatchScore?, complicationInstanceId: Int): ComplicationData {
+        // Chaque cercle du Dashboard retient s'il doit montrer l'équipe à
+        // domicile ou à l'extérieur (choisi via TeamSideConfigActivity au
+        // moment où l'utilisateur assigne ce fournisseur à ce cercle).
+        val side = TeamSidePrefs.getSide(this, complicationInstanceId)
+        val bitmap = if (side == TeamSidePrefs.SIDE_AWAY) match?.awayLogo else match?.homeLogo
 
-        val description = match?.let { "${it.homeTeam} contre ${it.awayTeam}" }
-            ?: "Aucun match sélectionné"
+        val icon = if (bitmap != null) {
+            Icon.createWithBitmap(bitmap)
+        } else {
+            Icon.createWithResource(this, R.drawable.ic_score_complication)
+        }
+
+        val teamName = match?.let { if (side == TeamSidePrefs.SIDE_AWAY) it.awayTeam else it.homeTeam }
+        val description = teamName ?: "Aucun match sélectionné"
 
         return SmallImageComplicationData.Builder(
+            // PHOTO plutôt qu'ICON : garantit que la couleur d'origine du
+            // logo n'est jamais teintée par le thème du cadran.
+            // Contrepartie : pas d'affichage en mode Always-On Display.
             smallImage = SmallImage.Builder(icon, SmallImageType.PHOTO).build(),
             contentDescription = PlainComplicationText.Builder(description).build()
         ).build()

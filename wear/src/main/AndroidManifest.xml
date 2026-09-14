@@ -14,10 +14,11 @@
 
         <!--
              Fournit les données de score aux complications (LONG_TEXT et
-             SMALL_IMAGE). UPDATE_PERIOD_SECONDS=0 car les mises à jour sont
-             déclenchées manuellement (ComplicationDataSourceUpdateRequester)
-             dès qu'une nouvelle donnée arrive du téléphone, plutôt que par
-             un rafraîchissement périodique du système.
+             SMALL_IMAGE). UPDATE_PERIOD_SECONDS=60 : le système rappelle
+             la complication ~chaque minute pour recalculer la minute de
+             jeu estimée (MatchClock), en plus du rafraîchissement
+             immédiat déclenché manuellement dès qu'une nouvelle donnée
+             arrive du téléphone (ComplicationDataSourceUpdateRequester).
         -->
         <service
             android:name=".ScoreComplicationService"
@@ -33,8 +34,26 @@
                 android:value="LONG_TEXT,SMALL_IMAGE" />
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
-                android:value="0" />
+                android:value="60" />
+            <meta-data
+                android:name="android.support.wearable.complications.PROVIDER_CONFIG_ACTION"
+                android:value="com.yann.sportscomplication.CONFIG_TEAM_SIDE" />
         </service>
+
+        <!--
+             Affiché par le système quand l'utilisateur assigne "Score en
+             direct" à un cercle du Dashboard : choix domicile/extérieur
+             pour CET emplacement précis.
+        -->
+        <activity
+            android:name=".TeamSideConfigActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.yann.sportscomplication.CONFIG_TEAM_SIDE" />
+                <category android:name="android.support.wearable.complications.category.PROVIDER_CONFIG" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
 
         <!--
              Reçoit les mises à jour de match envoyées par l'app téléphone

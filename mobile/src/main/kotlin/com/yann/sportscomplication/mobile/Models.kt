@@ -7,6 +7,8 @@ data class TeamResult(
 
 data class MatchResult(
     val id: String,
+    val idHomeTeam: String?,
+    val idAwayTeam: String?,
     val homeTeam: String,
     val awayTeam: String,
     val homeScore: String?,
@@ -14,7 +16,9 @@ data class MatchResult(
     val date: String,
     val time: String?,
     val status: String,
-    val league: String
+    val league: String,
+    /** Horodatage du coup d'envoi (UTC, epoch ms), ou null si non calculable. */
+    val kickoffEpochMillis: Long?
 ) {
     /** Ex. "PSG 2-1 OM" si le score est connu, sinon "PSG vs OM". */
     val title: String
@@ -27,12 +31,11 @@ data class MatchResult(
     val details: String
         get() = "$league · $date${time?.let { " $it" } ?: ""} · $status"
 
-    /**
-     * Ce qu'on envoie à la montre comme équivalent de la "minute" —
-     * TheSportsDB (plan gratuit) ne donne pas de minute de jeu en direct
-     * fiable, donc on utilise le statut si connu ("Match Finished"...),
-     * sinon la date/heure du match à venir.
-     */
-    val minuteLabel: String
-        get() = status.ifBlank { "$date${time?.let { " $it" } ?: ""}" }
+    /** Un match dans cet état n'a plus besoin d'être suivi (arrêt du polling). */
+    val isFinished: Boolean
+        get() = status.contains("Finished", ignoreCase = true) ||
+            status.equals("FT", ignoreCase = true) ||
+            status.contains("Postponed", ignoreCase = true) ||
+            status.contains("Cancelled", ignoreCase = true) ||
+            status.contains("Abandoned", ignoreCase = true)
 }

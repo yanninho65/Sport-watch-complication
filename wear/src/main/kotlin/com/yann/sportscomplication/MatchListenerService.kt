@@ -1,10 +1,16 @@
 package com.yann.sportscomplication
 
 import android.content.ComponentName
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import androidx.wear.watchface.complications.datasource.ComplicationDataSourceUpdateRequester
+import com.google.android.gms.tasks.Tasks
+import com.google.android.gms.wearable.Asset
 import com.google.android.gms.wearable.DataEvent
 import com.google.android.gms.wearable.DataEventBuffer
+import com.google.android.gms.wearable.DataMap
 import com.google.android.gms.wearable.DataMapItem
+import com.google.android.gms.wearable.Wearable
 import com.google.android.gms.wearable.WearableListenerService
 
 /**
@@ -13,8 +19,9 @@ import com.google.android.gms.wearable.WearableListenerService
  * force un rafraîchissement immédiat de la complication plutôt que
  * d'attendre le prochain cycle système.
  *
- * Les logos restent en placeholder pour l'instant — l'envoi des vrais
- * logos d'équipe (via Asset) est la prochaine étape.
+ * onDataChanged tourne déjà sur un thread de fond fourni par le système
+ * (pas le thread principal), donc les appels bloquants comme
+ * Tasks.await(...) pour décoder les Assets sont sans risque ici.
  */
 class MatchListenerService : WearableListenerService() {
 
@@ -29,24 +36,38 @@ class MatchListenerService : WearableListenerService() {
                 val awayTeam = dataMap.getString("awayTeam") ?: continue
                 val homeScore = dataMap.getString("homeScore")?.toIntOrNull()
                 val awayScore = dataMap.getString("awayScore")?.toIntOrNull()
-                val minute = dataMap.getString("minute").orEmpty()
+                val status = dataMap.getString("status").orEmpty()
+                val kickoff = if (dataMap.containsKey("kickoffEpochMillis")) {
+                    dataMap.getLong("kickoffEpochMillis")
+                } else {
+                    null
+                }
 
                 MatchScoreStore.current = MatchScore(
                     homeTeam = homeTeam,
                     awayTeam = awayTeam,
                     homeScore = homeScore,
                     awayScore = awayScore,
-                    minute = minute,
-                    // TODO(logos) : remplacer par les vrais logos reçus en
-                    // Asset une fois cette étape branchée côté téléphone.
-                    homeLogoResId = R.drawable.ic_score_complication,
-                    awayLogoResId = R.drawable.ic_score_complication
+                    status = status,
+                    kickoffEpochMillis = kickoff,
+                    homeLogo = decodeLogo(dataMap, "homeLogo"),
+                    awayLogo = decodeLogo(dataMap, "awayLogo")
                 )
 
                 requestComplicationRefresh()
             }
         } finally {
             dataEvents.release()
+        }
+    }
+
+    private fun decodeLogo(dataMap: DataMap, key: String): Bitmap? {
+        val asset: Asset = dataMap.getAsset(key) ?: return null
+        return try {
+            val response = Tasks.await(Wearable.getDataClient(this).getFdForAsset(asset))
+            response.inputStream.use { BitmapFactory.decodeStream(it) }
+        } catch (e: Exception) {
+            null
         }
     }
 

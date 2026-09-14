@@ -6,6 +6,9 @@ import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Client minimal pour TheSportsDB (endpoints v1 en lecture seule, sans
@@ -44,24 +47,80 @@ object SportsDbApi {
         last + next
     }
 
+    /** Relit un match précis par son id — utilisé pour le polling périodique. */
+    suspend fun lookupEvent(eventId: String): MatchResult? = withContext(Dispatchers.IO) {
+        val json = fetchJson("$BASE_URL/lookupevent.php?id=$eventId")
+        val events = json.optJSONArray("events") ?: return@withContext null
+        val e = events.optJSONObject(0) ?: return@withContext null
+        parseMatch(e)
+    }
+
+    /** URL du badge d'une équipe, ou null si introuvable. */
+    suspend fun getTeamBadgeUrl(teamId: String): String? = withContext(Dispatchers.IO) {
+        val json = fetchJson("$BASE_URL/lookupteam.php?id=$teamId")
+        val teams = json.optJSONArray("teams") ?: return@withContext null
+        val team = teams.optJSONObject(0) ?: return@withContext null
+        // Le nom exact du champ varie selon la doc/version de l'API
+        // ("strTeamBadge" le plus souvent, "strBadge" dans certains
+        // exemples) — on essaie les deux par prudence.
+        nullableString(team, "strTeamBadge") ?: nullableString(team, "strBadge")
+    }
+
+    /** Télécharge les octets bruts d'une image (logo). Null si échec. */
+    suspend fun downloadBytes(url: String): ByteArray? = withContext(Dispatchers.IO) {
+        var connection: HttpURLConnection? = null
+        try {
+            connection = URL(url).openConnection() as HttpURLConnection
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 10_000
+            if (connection.responseCode !in 200..299) return@withContext null
+            connection.inputStream.use { it.readBytes() }
+        } catch (e: Exception) {
+            null
+        } finally {
+            connection?.disconnect()
+        }
+    }
+
     private fun fetchEvents(url: String): List<MatchResult> {
         val json = fetchJson(url)
         val events = json.optJSONArray("events") ?: return emptyList()
-
         return (0 until events.length()).mapNotNull { i ->
-            val e = events.optJSONObject(i) ?: return@mapNotNull null
-            val id = e.optString("idEvent", null) ?: return@mapNotNull null
-            MatchResult(
-                id = id,
-                homeTeam = e.optString("strHomeTeam", "?"),
-                awayTeam = e.optString("strAwayTeam", "?"),
-                homeScore = nullableString(e, "intHomeScore"),
-                awayScore = nullableString(e, "intAwayScore"),
-                date = e.optString("dateEvent", "?"),
-                time = nullableString(e, "strTime"),
-                status = e.optString("strStatus", ""),
-                league = e.optString("strLeague", "")
-            )
+            events.optJSONObject(i)?.let { parseMatch(it) }
+        }
+    }
+
+    private fun parseMatch(e: JSONObject): MatchResult? {
+        val id = e.optString("idEvent", null) ?: return null
+        val date = e.optString("dateEvent", "?")
+        val time = nullableString(e, "strTime")
+
+        return MatchResult(
+            id = id,
+            idHomeTeam = nullableString(e, "idHomeTeam"),
+            idAwayTeam = nullableString(e, "idAwayTeam"),
+            homeTeam = e.optString("strHomeTeam", "?"),
+            awayTeam = e.optString("strAwayTeam", "?"),
+            homeScore = nullableString(e, "intHomeScore"),
+            awayScore = nullableString(e, "intAwayScore"),
+            date = date,
+            time = time,
+            status = e.optString("strStatus", ""),
+            league = e.optString("strLeague", ""),
+            kickoffEpochMillis = parseKickoffEpochMillis(date, time)
+        )
+    }
+
+    /** [date] et [time] sont exprimés en UTC par TheSportsDB. */
+    private fun parseKickoffEpochMillis(date: String, time: String?): Long? {
+        if (time.isNullOrBlank() || date == "?") return null
+        return try {
+            val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }
+            formatter.parse("$date $time")?.time
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -72,11 +131,12 @@ object SportsDbApi {
     }
 
     private fun fetchJson(urlString: String): JSONObject {
-        val connection = URL(urlString).openConnection() as HttpURLConnection
-        connection.requestMethod = "GET"
-        connection.connectTimeout = 10_000
-        connection.readTimeout = 10_000
+        var connection: HttpURLConnection? = null
         return try {
+            connection = URL(urlString).openConnection() as HttpURLConnection
+            connection.requestMethod = "GET"
+            connection.connectTimeout = 10_000
+            connection.readTimeout = 10_000
             val code = connection.responseCode
             if (code !in 200..299) return JSONObject()
             val body = connection.inputStream.bufferedReader().use { it.readText() }
@@ -84,7 +144,7 @@ object SportsDbApi {
         } catch (e: Exception) {
             JSONObject()
         } finally {
-            connection.disconnect()
+            connection?.disconnect()
         }
     }
 }
