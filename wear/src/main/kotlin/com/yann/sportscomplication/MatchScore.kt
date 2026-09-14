@@ -3,11 +3,11 @@ package com.yann.sportscomplication
 /**
  * Représente l'état d'un match tel qu'affiché par la complication.
  *
- * Pour l'instant, [homeLogoResId] et [awayLogoResId] pointent vers une
- * icône placeholder locale. À l'étape suivante (intégration avec le
- * téléphone), ils seront remplacés par des logos réels téléchargés depuis
- * TheSportsDB — probablement en passant par un Icon.createWithBitmap(...)
- * plutôt qu'une resource id compilée en dur.
+ * Pour l'instant, [homeLogoResId] et [awayLogoResId] pointent vers des
+ * icônes locales (voir MatchScoreStore). À l'étape suivante (intégration
+ * avec le téléphone), ils seront remplacés par des logos réels téléchargés
+ * depuis TheSportsDB — probablement en passant par un
+ * Icon.createWithBitmap(...) plutôt qu'une resource id compilée en dur.
  */
 data class MatchScore(
     val homeTeam: String,
@@ -32,6 +32,18 @@ data class MatchScore(
  */
 object MatchScoreStore {
 
+    // TODO(intégration téléphone) : match en dur uniquement pour tester le
+    // rendu réel des complications sur la montre avant que l'app téléphone
+    // existe. À remplacer par `null` (ou la vraie donnée) une fois le
+    // WearableListenerService branché.
     @Volatile
-    var current: MatchScore? = null
+    var current: MatchScore? = MatchScore(
+        homeTeam = "PSG",
+        awayTeam = "OM",
+        homeScore = 2,
+        awayScore = 1,
+        minute = "64'",
+        homeLogoResId = R.drawable.ic_test_logo_home,
+        awayLogoResId = R.drawable.ic_test_logo_away
+    )
 }
