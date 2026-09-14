@@ -1,15 +1,16 @@
 Arborescence des fichiers livrés dans ce zip — à extraire à la racine
 du dépôt Sport-watch-complication (écrase les fichiers existants,
-crée les nouveaux). Regroupe les deux étapes (ajout du mode combiné,
-puis suppression des modes domicile seul / extérieur seul) : c'est
-l'état final, pas un diff intermédiaire. Trois fichiers doivent en
-plus être SUPPRIMÉS à la main (un zip ne peut pas le faire) — voir
-"À FAIRE À LA MAIN" ci-dessous.
+crée les nouveaux). Regroupe les deux étapes du code (ajout du mode
+combiné, puis suppression des modes domicile seul / extérieur seul)
+et la mise à jour du README : c'est l'état final, pas un diff
+intermédiaire. Trois fichiers doivent en plus être SUPPRIMÉS à la main
+(un zip ne peut pas le faire) — voir "À FAIRE À LA MAIN" ci-dessous.
 
 complication-ronde-combinee-maj.zip
-├── wear/src/main/AndroidManifest.xml                        [modifié]
-├── wear/src/main/kotlin/.../ComplicationImageComposer.kt     [nouveau]
-└── wear/src/main/kotlin/.../ScoreComplicationService.kt      [modifié]
+├── README.md                                                  [modifié]
+├── wear/src/main/AndroidManifest.xml                          [modifié]
+├── wear/src/main/kotlin/.../ComplicationImageComposer.kt      [nouveau]
+└── wear/src/main/kotlin/.../ScoreComplicationService.kt       [modifié]
 
 Ce que ça change au final :
 - Plus aucun choix à l'assignation d'un cercle du Dashboard : la
@@ -19,6 +20,8 @@ Ce que ça change au final :
 - L'écran de config domicile/extérieur (et le point d'entrée associé
   dans le manifest) a disparu : il n'y a plus rien à configurer.
 - L'emplacement central Zenith (LONG_TEXT) n'a pas changé.
+- README.md mis à jour en conséquence (description, état actuel,
+  limites connues, arborescence, étapes de test).
 
 À FAIRE À LA MAIN après extraction (un zip ne supprime jamais de
 fichiers) — ces 3 fichiers n'ont plus lieu d'être :

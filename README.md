@@ -4,7 +4,8 @@ Complication Wear OS qui affiche le score d'un match en direct :
 - **LONG_TEXT** → pour l'emplacement central du visage Zenith
   (ex. `PSG 2-1 OM · 1ère MT`)
 - **SMALL_IMAGE** → pour les complications cercle du Dashboard Samsung
-  (logo de l'équipe à domicile, en couleur)
+  (image composée réunissant les deux logos d'équipe ET le score dans
+  un seul cercle, voir `ComplicationImageComposer`)
 
 Deux modules dans ce repo :
 - `wear/` — la complication elle-même (montre)
@@ -13,14 +14,20 @@ Deux modules dans ce repo :
 ## État actuel
 
 **Montre (`wear/`)** : `ScoreComplicationService` répond aux deux types
-de complications. `MatchListenerService` reçoit les mises à jour du
-téléphone (chemin `/match`), décode les logos reçus en Asset, met à
-jour `MatchScoreStore`, et force un rafraîchissement immédiat. Un
-DataItem `cleared=true` (envoyé quand le suivi est arrêté côté
-téléphone) réinitialise la complication à "Aucun match". `MatchClock`
-traduit le statut brut de TheSportsDB ("1H", "2H", "HT", "FT"...) en
-français, **sans calculer de minute par déduction** — voir la section
-"Pourquoi pas de minute de jeu chiffrée" plus bas.
+de complications. Pour SMALL_IMAGE, `ComplicationImageComposer` dessine
+à la volée une image carrée unique (logo domicile à gauche, score au
+centre, logo extérieur à droite, fond circulaire sombre pour la
+lisibilité) — le système la recadre en cercle, tout est donc positionné
+sur la bande horizontale centrale pour ne rien perdre au recadrage.
+Aucune config n'est demandée à l'assignation : le rendu est le même
+sur n'importe quel cercle du Dashboard. `MatchListenerService` reçoit
+les mises à jour du téléphone (chemin `/match`), décode les deux logos
+reçus en Asset, met à jour `MatchScoreStore`, et force un
+rafraîchissement immédiat. Un DataItem `cleared=true` (envoyé quand le
+suivi est arrêté côté téléphone) réinitialise la complication à "Aucun
+match". `MatchClock` traduit le statut brut de TheSportsDB ("1H", "2H",
+"HT", "FT"...) en français, **sans calculer de minute par déduction**
+— voir la section "Pourquoi pas de minute de jeu chiffrée" plus bas.
 `UPDATE_PERIOD_SECONDS=60` fait rappeler la complication chaque minute
 même sans nouvelle donnée du téléphone.
 
@@ -88,11 +95,11 @@ que tu l'aies décidé.
   s'arrête de façon inattendue, désactiver l'optimisation de batterie
   pour cette app (Paramètres > Batterie > Sports Complication > Non
   optimisée).
-- **Deux cercles, deux logos** : assigne "Score en direct" à un premier
-  cercle du Dashboard → l'écran de config demande "Domicile" ou
-  "Extérieur" → choisis "Domicile". Assigne-le à un second cercle →
-  choisis "Extérieur" cette fois. Chaque cercle retient son choix
-  indépendamment (`TeamSidePrefs`, par `complicationInstanceId`).
+- **Image cercle dense** : le cercle du Dashboard est minuscule à
+  l'écran, et `ComplicationImageComposer` y fait tenir deux logos ET
+  le score. Pour un score à deux chiffres des deux côtés (ex.
+  "12-9"), logos et texte se touchent presque — reste lisible mais
+  c'est un compromis assumé, pas un bug.
 
 ## Compiler sans Android Studio
 
@@ -118,15 +125,14 @@ sports-complication-watch/
 │   ├── build.gradle.kts          dépendances du module montre
 │   ├── debug.keystore            clé de signature fixe (voir plus bas)
 │   └── src/main/
-│       ├── AndroidManifest.xml   déclare les deux services + l'activité de config
+│       ├── AndroidManifest.xml   déclare les deux services (complication + listener)
 │       ├── kotlin/.../
 │       │   ├── ScoreComplicationService.kt
+│       │   ├── ComplicationImageComposer.kt   dessine l'image combinée (2 logos + score) du SMALL_IMAGE
 │       │   ├── MatchListenerService.kt   reçoit les données du téléphone (+ signal "cleared")
 │       │   ├── MatchClock.kt     traduit le statut TheSportsDB en français (sans calcul de minute)
-│       │   ├── TeamSideConfigActivity.kt   choix domicile/extérieur par cercle
-│       │   ├── TeamSidePrefs.kt  stockage de ce choix par emplacement
 │       │   └── MatchScore.kt     modèle de données + cache en mémoire
-│       └── res/                  icônes, layout config, strings
+│       └── res/                  icônes, strings
 ├── mobile/
 │   ├── build.gradle.kts          dépendances du module téléphone
 │   ├── debug.keystore            même clé que côté montre
@@ -176,7 +182,8 @@ Une fois l'APK `wear` installé :
 1. Sur le visage **Zenith**, assigne la complication "Score en direct" à
    l'emplacement central (type LONG_TEXT)
 2. Sur le **Dashboard** Samsung, assigne-la à une des complications
-   cercle (type SMALL_IMAGE)
+   cercle (type SMALL_IMAGE) — aucune config ne s'affiche, le cercle
+   montrera directement les deux logos + le score
 3. Cherche un match dans l'app téléphone (équipe, joueur ou ligue) et
    sélectionne-le — la montre devrait se mettre à jour en quelques
    secondes, puis continuer à se rafraîchir toutes les minutes, même si
