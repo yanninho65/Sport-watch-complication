@@ -13,23 +13,22 @@ Deux modules dans ce repo :
 ## État actuel
 
 **Montre (`wear/`)** : le service `ScoreComplicationService` répond aux
-deux types de complications, mais les données viennent d'un cache
-statique en mémoire (`MatchScoreStore`), pas encore relié au téléphone.
-Il contient pour l'instant un match factice codé en dur (PSG 2-1 OM ·
-64', logos rouge/bleu sans tint) pour valider le rendu réel sur la
-montre avant que l'app téléphone existe.
+deux types de complications. `MatchListenerService` reçoit les mises à
+jour envoyées par le téléphone (chemin `/match` de la Data Layer API),
+met à jour `MatchScoreStore`, et force un rafraîchissement immédiat de
+la complication. Les logos restent en placeholder — l'envoi des vrais
+logos d'équipe (via Asset) est la prochaine étape.
 
 **Téléphone (`mobile/`)** : recherche d'équipe par nom via TheSportsDB
 (`searchteams.php`), puis liste des matchs récents/à venir de l'équipe
 choisie (`eventslast.php` + `eventsnext.php`). Sélectionner un match
-affiche pour l'instant un simple Toast — l'envoi réel vers la montre
-n'est pas encore branché.
+envoie maintenant ses infos (équipes, score si connu, statut/horaire) à
+la montre via la Wear Data Layer API (`PutDataMapRequest`).
 
-**Prochaine étape** : envoyer le match sélectionné vers la montre via
-la Wear Data Layer API (`DataClient` côté téléphone,
-`WearableListenerService` côté montre pour alimenter
-`MatchScoreStore`), avec un polling périodique pour les mises à jour
-de score.
+**Prochaine étape** : envoyer aussi les logos des deux équipes (Asset)
+pour remplacer le placeholder dans le Dashboard Samsung, et ajouter un
+polling périodique côté téléphone pour les mises à jour de score en
+direct (pour l'instant, l'envoi n'a lieu qu'au moment de la sélection).
 
 ## Compiler sans Android Studio
 
@@ -58,6 +57,7 @@ sports-complication-watch/
 │       ├── debug.keystore        clé de signature fixe (voir plus bas)
 │       ├── kotlin/.../
 │       │   ├── ScoreComplicationService.kt
+│       │   ├── MatchListenerService.kt   reçoit les données du téléphone
 │       │   └── MatchScore.kt     modèle de données + cache en mémoire
 │       └── res/                  icônes (placeholder + test PSG/OM), strings
 ├── mobile/
