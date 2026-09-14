@@ -15,6 +15,21 @@ android {
         versionName = "0.1"
     }
 
+    signingConfigs {
+        // Keystore fixe committé dans le repo (wear/debug.keystore) pour que
+        // chaque build GitHub Actions signe avec la MÊME clé. Sans ça, AGP
+        // génère un keystore de debug aléatoire à chaque run CI, ce qui
+        // provoque une erreur INSTALL_FAILED_UPDATE_INCOMPATIBLE dès qu'on
+        // essaie d'installer une mise à jour par-dessus une version
+        // précédente signée différemment.
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         debug {
             isMinifyEnabled = false
