@@ -52,4 +52,5 @@ android {
 dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.wear.watchface:watchface-complications-data-source:1.3.0")
+    implementation("com.google.android.gms:play-services-wearable:20.0.1")
 }
