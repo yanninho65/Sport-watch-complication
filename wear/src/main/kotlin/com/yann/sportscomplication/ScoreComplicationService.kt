@@ -8,6 +8,7 @@ import androidx.wear.watchface.complications.data.MonochromaticImage
 import androidx.wear.watchface.complications.data.MonochromaticImageComplicationData
 import androidx.wear.watchface.complications.data.NoDataComplicationData
 import androidx.wear.watchface.complications.data.PlainComplicationText
+import androidx.wear.watchface.complications.data.ShortTextComplicationData
 import androidx.wear.watchface.complications.data.SmallImage
 import androidx.wear.watchface.complications.data.SmallImageComplicationData
 import androidx.wear.watchface.complications.data.SmallImageType
@@ -17,17 +18,23 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
 /**
  * Fournit les données de score en direct aux complications compatibles.
  *
- * Trois types sont supportés (voir AndroidManifest.xml) :
+ * Quatre types sont supportés (voir AndroidManifest.xml) :
  *  - LONG_TEXT          : pour l'emplacement central de Zenith
  *                         (ex. "PSG 2-1 OM · 64'")
  *  - SMALL_IMAGE        : pour les complications cercle du Dashboard Samsung
  *                         (image composée réunissant les deux logos ET le
  *                         score, en couleur — voir ComplicationImageComposer)
- *  - MONOCHROMATIC_IMAGE : pour un emplacement "petit rectangle" qui n'accepte
- *                         que du monochrome (ex. bande au-dessus de la carte
- *                         notification) — même principe, logos convertis en
- *                         silhouette blanche (voir
+ *  - MONOCHROMATIC_IMAGE : pour un emplacement qui n'accepte que du
+ *                         monochrome et affiche une seule image (logos +
+ *                         score composés en silhouette — voir
  *                         ComplicationImageComposer.composeMonochromeWide)
+ *  - SHORT_TEXT          : pour les petits rectangles de Zenith (confirmé :
+ *                         Zenith ne propose que SHORT_TEXT/LONG_TEXT/
+ *                         RANGED_VALUE/MONOCHROMATIC_ICON selon l'emplacement,
+ *                         et ce rectangle-là n'accepte pas
+ *                         MONOCHROMATIC_IMAGE) — icône = les deux logos en
+ *                         silhouette côte à côte (composeMonochromeIcon),
+ *                         texte = le score seul (max 7 caractères)
  *
  * Les données viennent de MatchScoreStore, alimenté par
  * MatchListenerService (Wear Data Layer API). UPDATE_PERIOD_SECONDS=60
@@ -49,6 +56,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
             ComplicationType.LONG_TEXT -> buildLongText(match)
             ComplicationType.SMALL_IMAGE -> buildSmallImage(match)
             ComplicationType.MONOCHROMATIC_IMAGE -> buildMonochromaticImage(match)
+            ComplicationType.SHORT_TEXT -> buildShortText(match)
             else -> NoDataComplicationData()
         }
 
@@ -73,6 +81,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
             ComplicationType.LONG_TEXT -> buildLongText(preview)
             ComplicationType.SMALL_IMAGE -> buildSmallImage(preview)
             ComplicationType.MONOCHROMATIC_IMAGE -> buildMonochromaticImage(preview)
+            ComplicationType.SHORT_TEXT -> buildShortText(preview)
             else -> null
         }
     }
@@ -138,5 +147,26 @@ class ScoreComplicationService : ComplicationDataSourceService() {
             monochromaticImage = MonochromaticImage.Builder(icon).build(),
             contentDescription = PlainComplicationText.Builder(description).build()
         ).build()
+    }
+
+    private fun buildShortText(match: MatchScore?): ComplicationData {
+        val scoreText = if (match?.homeScore != null && match.awayScore != null) {
+            "${match.homeScore}-${match.awayScore}"
+        } else {
+            "vs"
+        }
+
+        val description = match?.let {
+            "${it.homeTeam} $scoreText ${it.awayTeam}"
+        } ?: "Aucun match sélectionné"
+
+        val icon = Icon.createWithBitmap(ComplicationImageComposer.composeMonochromeIcon(match))
+
+        return ShortTextComplicationData.Builder(
+            text = PlainComplicationText.Builder(scoreText).build(),
+            contentDescription = PlainComplicationText.Builder(description).build()
+        )
+            .setMonochromaticImage(MonochromaticImage.Builder(icon).build())
+            .build()
     }
 }

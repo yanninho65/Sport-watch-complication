@@ -10,6 +10,11 @@ Complication Wear OS qui affiche le score d'un match en direct :
   n'accepte que du monochrome (ex. bande au-dessus de la carte
   notification) — même principe, logos et score composés en silhouette
   blanche que le système teinte lui-même (voir `ComplicationImageComposer`)
+- **SHORT_TEXT** → pour les petits rectangles de Zenith spécifiquement
+  (confirmé : Zenith ne propose que SHORT_TEXT/LONG_TEXT/RANGED_VALUE/
+  MONOCHROMATIC_ICON selon l'emplacement, et ces rectangles-là n'acceptent
+  pas MONOCHROMATIC_IMAGE) — icône = les deux logos en silhouette côte à
+  côte, texte = le score seul (ex. `2-1`)
 
 Deux modules dans ce repo :
 - `wear/` — la complication elle-même (montre)
@@ -17,7 +22,7 @@ Deux modules dans ce repo :
 
 ## État actuel
 
-**Montre (`wear/`)** : `ScoreComplicationService` répond aux trois types
+**Montre (`wear/`)** : `ScoreComplicationService` répond aux quatre types
 de complications. Pour SMALL_IMAGE, `ComplicationImageComposer` dessine
 à la volée une image carrée unique (logo domicile à gauche, score au
 centre, logo extérieur à droite, fond circulaire sombre pour la
@@ -28,8 +33,12 @@ rectangulaire large avec le même agencement (logo domicile, score, logo
 extérieur), mais en silhouette blanche uniquement — les logos couleur
 sont recolorés en blanc via leur canal alpha, sans fond peint, pour
 correspondre à la convention monochrome (le système applique ensuite sa
-propre teinte). Aucune config n'est demandée à l'assignation, quel que
-soit le type : le rendu est le même partout. `MatchListenerService` reçoit
+propre teinte). Pour SHORT_TEXT, `ComplicationImageComposer` compose une
+petite icône carrée avec les deux logos en silhouette côte à côte (sans
+score dedans) ; le score (ex. `2-1`) passe par le champ texte natif du
+SHORT_TEXT, limité à 7 caractères par l'API — largement suffisant.
+Aucune config n'est demandée à l'assignation, quel que soit le type : le
+rendu est le même partout. `MatchListenerService` reçoit
 les mises à jour du téléphone (chemin `/match`), décode les deux logos
 reçus en Asset, met à jour `MatchScoreStore`, et force un
 rafraîchissement immédiat. Un DataItem `cleared=true` (envoyé quand le
@@ -137,7 +146,7 @@ sports-complication-watch/
 │       ├── AndroidManifest.xml   déclare les deux services (complication + listener)
 │       ├── kotlin/.../
 │       │   ├── ScoreComplicationService.kt
-│       │   ├── ComplicationImageComposer.kt   dessine les images combinées (2 logos + score) du SMALL_IMAGE et du MONOCHROMATIC_IMAGE
+│       │   ├── ComplicationImageComposer.kt   dessine les images combinées (2 logos + score) du SMALL_IMAGE, MONOCHROMATIC_IMAGE et SHORT_TEXT
 │       │   ├── MatchListenerService.kt   reçoit les données du téléphone (+ signal "cleared")
 │       │   ├── MatchClock.kt     traduit le statut TheSportsDB en français (sans calcul de minute)
 │       │   └── MatchScore.kt     modèle de données + cache en mémoire
@@ -194,8 +203,9 @@ Une fois l'APK `wear` installé :
    cercle (type SMALL_IMAGE) — aucune config ne s'affiche, le cercle
    montrera directement les deux logos + le score
 3. Sur un emplacement "petit rectangle" qui n'accepte que du monochrome,
-   assigne-la (type MONOCHROMATIC_IMAGE) — même rendu logo + score + logo,
-   en silhouette blanche teintée par le système
+   assigne-la (type MONOCHROMATIC_IMAGE ou SHORT_TEXT selon ce que
+   l'emplacement propose — sur Zenith spécifiquement, c'est SHORT_TEXT :
+   icône avec les deux logos + score en texte à côté)
 4. Cherche un match dans l'app téléphone (équipe, joueur ou ligue) et
    sélectionne-le — la montre devrait se mettre à jour en quelques
    secondes, puis continuer à se rafraîchir toutes les minutes, même si

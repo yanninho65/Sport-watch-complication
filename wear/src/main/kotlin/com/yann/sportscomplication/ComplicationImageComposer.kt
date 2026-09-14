@@ -14,11 +14,13 @@ import android.graphics.RectF
  * destinées aux complications qui ne peuvent pas afficher texte et image
  * séparément.
  *
- * Deux formats :
+ * Trois formats :
  *  - [composeCombined] : cercle en couleur (Dashboard Samsung, SMALL_IMAGE).
  *  - [composeMonochromeWide] : rectangle large en silhouette blanche
- *    (emplacement MONOCHROMATIC_IMAGE, ex. bande au-dessus de la carte
- *    notification).
+ *    (emplacement MONOCHROMATIC_IMAGE).
+ *  - [composeMonochromeIcon] : icône carrée en silhouette, sans texte
+ *    (emplacement SHORT_TEXT — le score passe par le champ texte séparé,
+ *    voir ScoreComplicationService — ex. les petits rectangles Zenith).
  *
  * Le système recadre les SMALL_IMAGE de type PHOTO en cercle (voir
  * ScoreComplicationService). Tout le contenu important est donc placé sur
@@ -53,6 +55,15 @@ object ComplicationImageComposer {
     private const val WIDE_LOGO_SIZE = 150f
     private const val WIDE_LOGO_MARGIN = 8f
     private const val WIDE_SCORE_TEXT_SIZE = 84f
+
+    // Icône carrée pour SHORT_TEXT (ex. les petits rectangles Zenith qui
+    // n'acceptent pas MONOCHROMATIC_IMAGE) — les deux logos côte à côte en
+    // silhouette, sans score ni fond : le score passe par le champ texte
+    // du SHORT_TEXT lui-même (voir ScoreComplicationService).
+    private const val ICON_SIZE = 128
+    private const val ICON_CENTER_Y = ICON_SIZE / 2f
+    private const val ICON_LOGO_SIZE = 100f
+    private const val ICON_LOGO_MARGIN = 4f
 
     fun composeCombined(match: MatchScore?): Bitmap {
         val bitmap = Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
@@ -95,6 +106,27 @@ object ComplicationImageComposer {
         drawMonochromeLogo(canvas, match?.homeLogo, homeCenterX, WIDE_CENTER_Y, logoHalf)
         drawMonochromeLogo(canvas, match?.awayLogo, awayCenterX, WIDE_CENTER_Y, logoHalf)
         drawWideScoreText(canvas, scoreText(match))
+
+        return bitmap
+    }
+
+    /**
+     * Compose l'icône carrée (deux logos côte à côte, en silhouette, sans
+     * texte) utilisée par le SHORT_TEXT — voir [WIDE_LOGO_MARGIN] et la
+     * note de tête de classe. Le score n'est pas dans l'image : il passe
+     * par le champ texte du SHORT_TEXT (limité à 7 caractères, largement
+     * suffisant pour "2-1" ou "vs").
+     */
+    fun composeMonochromeIcon(match: MatchScore?): Bitmap {
+        val bitmap = Bitmap.createBitmap(ICON_SIZE, ICON_SIZE, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+
+        val logoHalf = ICON_LOGO_SIZE / 2f
+        val homeCenterX = logoHalf + ICON_LOGO_MARGIN
+        val awayCenterX = ICON_SIZE - logoHalf - ICON_LOGO_MARGIN
+
+        drawMonochromeLogo(canvas, match?.homeLogo, homeCenterX, ICON_CENTER_Y, logoHalf)
+        drawMonochromeLogo(canvas, match?.awayLogo, awayCenterX, ICON_CENTER_Y, logoHalf)
 
         return bitmap
     }

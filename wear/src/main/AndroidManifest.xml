@@ -14,11 +14,11 @@
 
         <!--
              Fournit les données de score aux complications (LONG_TEXT,
-             SMALL_IMAGE et MONOCHROMATIC_IMAGE). UPDATE_PERIOD_SECONDS=60 :
-             le système rappelle la complication ~chaque minute pour
-             recalculer la minute de jeu estimée (MatchClock), en plus du
-             rafraîchissement immédiat déclenché manuellement dès qu'une
-             nouvelle donnée arrive du téléphone
+             SMALL_IMAGE, MONOCHROMATIC_IMAGE et SHORT_TEXT).
+             UPDATE_PERIOD_SECONDS=60 : le système rappelle la complication
+             ~chaque minute pour recalculer la minute de jeu estimée
+             (MatchClock), en plus du rafraîchissement immédiat déclenché
+             manuellement dès qu'une nouvelle donnée arrive du téléphone
              (ComplicationDataSourceUpdateRequester).
         -->
         <service
@@ -32,7 +32,7 @@
             </intent-filter>
             <meta-data
                 android:name="android.support.wearable.complications.SUPPORTED_TYPES"
-                android:value="LONG_TEXT,SMALL_IMAGE,MONOCHROMATIC_IMAGE" />
+                android:value="LONG_TEXT,SMALL_IMAGE,MONOCHROMATIC_IMAGE,SHORT_TEXT" />
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="60" />
