@@ -3,17 +3,19 @@ package com.yann.sportscomplication
 /**
  * Représente l'état d'un match tel qu'affiché par la complication.
  *
- * Pour l'instant, [homeLogoResId] et [awayLogoResId] pointent vers des
- * icônes locales (voir MatchScoreStore). À l'étape suivante (intégration
- * avec le téléphone), ils seront remplacés par des logos réels téléchargés
- * depuis TheSportsDB — probablement en passant par un
- * Icon.createWithBitmap(...) plutôt qu'une resource id compilée en dur.
+ * [homeScore] et [awayScore] sont nullables car un match pas encore
+ * commencé n'a pas de score.
+ *
+ * [homeLogoResId] et [awayLogoResId] pointent vers une icône placeholder
+ * locale. À l'étape suivante, ils seront remplacés par des logos réels
+ * reçus du téléphone via Asset (Data Layer API) plutôt qu'une resource id
+ * compilée en dur.
  */
 data class MatchScore(
     val homeTeam: String,
     val awayTeam: String,
-    val homeScore: Int,
-    val awayScore: Int,
+    val homeScore: Int?,
+    val awayScore: Int?,
     val minute: String,
     val homeLogoResId: Int,
     val awayLogoResId: Int
@@ -23,27 +25,17 @@ data class MatchScore(
  * Cache en mémoire du dernier score reçu.
  *
  * ATTENTION : ce cache est volatile — il est perdu si le système tue le
- * processus de l'app entre deux requêtes de complication. À l'étape
- * suivante, il faudra persister la dernière valeur connue (ex. via
- * SharedPreferences ou DataStore) pour que la complication survive à un
- * redémarrage du processus, et un WearableListenerService viendra
- * alimenter ce cache à partir des messages envoyés par le téléphone via
- * la Data Layer API.
+ * processus de l'app entre deux requêtes de complication. Ça devient un
+ * vrai problème maintenant que les données viennent du téléphone : si le
+ * processus watch redémarre, on revient à `null` ("aucun match") jusqu'à
+ * la prochaine mise à jour envoyée par le téléphone. À corriger plus tard
+ * en persistant la dernière valeur connue (ex. SharedPreferences).
+ *
+ * Alimenté par MatchListenerService, qui reçoit les mises à jour du
+ * téléphone via la Wear Data Layer API.
  */
 object MatchScoreStore {
 
-    // TODO(intégration téléphone) : match en dur uniquement pour tester le
-    // rendu réel des complications sur la montre avant que l'app téléphone
-    // existe. À remplacer par `null` (ou la vraie donnée) une fois le
-    // WearableListenerService branché.
     @Volatile
-    var current: MatchScore? = MatchScore(
-        homeTeam = "PSG",
-        awayTeam = "OM",
-        homeScore = 2,
-        awayScore = 1,
-        minute = "64'",
-        homeLogoResId = R.drawable.ic_test_logo_home,
-        awayLogoResId = R.drawable.ic_test_logo_away
-    )
+    var current: MatchScore? = null
 }

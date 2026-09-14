@@ -76,8 +76,12 @@ class ScoreComplicationService : ComplicationDataSourceService() {
             ).build()
         }
 
-        val text = "${match.homeTeam} ${match.homeScore}-${match.awayScore} " +
-            "${match.awayTeam} · ${match.minute}"
+        val scoreText = if (match.homeScore != null && match.awayScore != null) {
+            "${match.homeScore}-${match.awayScore}"
+        } else {
+            "vs"
+        }
+        val text = "${match.homeTeam} $scoreText ${match.awayTeam} · ${match.minute}"
 
         return LongTextComplicationData.Builder(
             text = PlainComplicationText.Builder(text).build(),
