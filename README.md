@@ -6,6 +6,7 @@ Complication Wear OS qui affiche le score d'un match en direct :
 - **SMALL_IMAGE** → pour un emplacement "petit rectangle" qui accepte une
   image en couleur (image composée réunissant les deux logos d'équipe ET
   le score, couleurs d'origine conservées, voir `ComplicationImageComposer`)
+  — **rendu des logos peu fiable sur Zenith, voir "Limites connues"**
 - **MONOCHROMATIC_IMAGE** → pour un emplacement "petit rectangle" qui
   n'accepte que du monochrome (ex. bande au-dessus de la carte
   notification) — même principe, logos et score composés en silhouette
@@ -14,7 +15,8 @@ Complication Wear OS qui affiche le score d'un match en direct :
   (confirmé : Zenith ne propose que SHORT_TEXT/LONG_TEXT/RANGED_VALUE/
   MONOCHROMATIC_ICON selon l'emplacement, et ces rectangles-là n'acceptent
   pas MONOCHROMATIC_IMAGE) — icône = les deux logos en silhouette côte à
-  côte, texte = le score seul (ex. `2-1`)
+  côte, texte = le score seul (ex. `2-1`) —
+  **rendu de l'icône peu fiable sur Zenith, voir "Limites connues"**
 
 Deux modules dans ce repo :
 - `wear/` — la complication elle-même (montre)
@@ -28,10 +30,10 @@ une image rectangulaire large (logo domicile, score, logo extérieur,
 tous resserrés près du centre plutôt que près des bords), en couleurs
 d'origine, sans fond peint — le fond sombre de la case hôte suffit, et
 un contour noir derrière le score garantit la lisibilité quel que soit
-le fond. (Deux versions précédentes abandonnées : cercle pour le
-Dashboard Samsung, puis rectangle large avec logos près des bords — le
-logo extérieur disparaissait quand même sur Zenith au recadrage ; voir
-ARBORESCENCE.txt de cette livraison pour le détail.)
+le fond. Deux versions précédentes de ce rendu ont été abandonnées
+(cercle pour le Dashboard Samsung, puis logos près des bords d'un
+rectangle large) : voir "Limites connues" plus bas pour le détail et la
+décision finale sur ce point.
 Pour MONOCHROMATIC_IMAGE, `ComplicationImageComposer` compose une image
 rectangulaire large avec le même agencement resserré, mais en silhouette
 blanche uniquement — les logos couleur sont recolorés en blanc via leur
@@ -118,22 +120,33 @@ que tu l'aies décidé.
   pour cette app (Paramètres > Batterie > Sports Complication > Non
   optimisée).
 - **Icône SHORT_TEXT limitée à un seul élément** : le champ icône d'un
-  SHORT_TEXT (petits rectangles Zenith) ne peut afficher qu'une seule
-  image simple — impossible d'y faire tenir lisiblement deux logos, d'où
-  le choix de `composeMonochromeIcon` : voir la discussion dans le repo
-  pour le compromis retenu (icône simplifiée, score en texte).
+  SHORT_TEXT est typé `MonochromaticImage` dans l'API Wear OS — aucune
+  version couleur n'est possible pour ce champ, sur aucune montre. Il ne
+  peut afficher qu'une seule image simple, d'où le choix de
+  `composeMonochromeIcon` (deux logos compressés côte à côte) plutôt que
+  d'essayer d'en caser deux à taille lisible.
 - **Aucune information sur l'emplacement cible** : Android ne transmet
   pas à `ComplicationDataSourceService` la forme/taille de l'emplacement
   qui demande les données — deux emplacements SMALL_IMAGE différents
   reçoivent forcément la même image. Un seul rendu SMALL_IMAGE est donc
   possible à la fois pour toute l'app (voir "État actuel" ci-dessus).
-- **Recadrage du rectangle large imprévisible** : sans connaître les
-  dimensions réelles de la case sur Zenith, `composeColorWide` /
-  `composeMonochromeWide` resserrent les deux logos près du centre
-  (`WIDE_LOGO_OFFSET_X`) plutôt que près des bords — le score y a
-  toujours survécu à chaque essai jusqu'ici, donc c'est la zone la plus
-  sûre empiriquement, mais rien ne garantit que les deux logos survivent
-  sur toutes les tailles de case.
+- **Logos dans les petits rectangles Zenith : rendu peu fiable,
+  abandonné.** Plusieurs versions testées sur la montre (logos aux bords
+  d'un rectangle large, puis resserrés près du centre) — dans le
+  meilleur cas un seul logo apparaissait (souvent partiellement), et
+  d'un essai à l'autre, sans changement de code entre les deux, la même
+  case SHORT_TEXT est passée d'"icône visible" à "aucune icône". La
+  cause exacte n'a pas pu être identifiée avec certitude : Zenith ne
+  publie pas les dimensions réelles de ses emplacements, et l'API de
+  complication ne les transmet pas non plus à l'app — impossible donc de
+  garantir un recadrage cohérent. Le pipeline de données (téléchargement
+  et envoi des deux logos, téléphone → montre) a été vérifié et traite
+  domicile/extérieur de façon strictement identique : ce n'est pas un
+  bug côté données. Décision : ne pas continuer à ajuster à l'aveugle.
+  Le texte (score, et le nom des équipes en LONG_TEXT au centre) reste
+  le canal fiable sur Zenith ; les logos dans les petits rectangles
+  restent implémentés tels quels (couleur ou silhouette selon le type)
+  mais sans garantie d'affichage.
 
 ## Compiler sans Android Studio
 
@@ -216,11 +229,11 @@ Une fois l'APK `wear` installé :
 1. Sur le visage **Zenith**, assigne la complication "Score en direct" à
    l'emplacement central (type LONG_TEXT)
 2. Sur les petits rectangles de Zenith, teste les types proposés selon
-   l'emplacement : SHORT_TEXT (icône avec les deux logos en silhouette +
-   score en texte à côté, ex. `2-1`), SMALL_IMAGE (rectangle large en
-   couleur, logo — score — logo) ou MONOCHROMATIC_IMAGE (même agencement
-   en silhouette teintée par le système) — aucune config ne s'affiche à
-   l'assignation, quel que soit le type retenu
+   l'emplacement : SHORT_TEXT (score en texte, ex. `2-1`) ou SMALL_IMAGE
+   (logo(s) + score composés en image) — le score s'affiche de façon
+   fiable, mais l'affichage des logos y est expérimental et peu fiable
+   (voir "Limites connues") ; aucune config ne s'affiche à l'assignation,
+   quel que soit le type retenu
 3. Cherche un match dans l'app téléphone (équipe, joueur ou ligue) et
    sélectionne-le — la montre devrait se mettre à jour en quelques
    secondes, puis continuer à se rafraîchir toutes les minutes, même si
