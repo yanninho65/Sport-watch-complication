@@ -20,7 +20,18 @@ jobs:
           java-version: '17'
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+        uses: android-actions/setup-android@v4
+        with:
+          packages: ''
+          accept-android-sdk-licenses: true
+          log-accepted-android-sdk-licenses: false
+
+      - name: Install Android SDK packages
+        run: |
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-34" \
+            "build-tools;34.0.0"
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -28,7 +39,8 @@ jobs:
           gradle-version: 8.9
 
       - name: Build debug APKs (wear + mobile)
-        run: gradle :wear:assembleDebug :mobile:assembleDebug --no-daemon
+        run: |
+          gradle :wear:assembleDebug :mobile:assembleDebug --no-daemon
 
       - name: Upload wear APK
         uses: actions/upload-artifact@v4
