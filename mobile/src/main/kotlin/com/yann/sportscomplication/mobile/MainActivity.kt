@@ -1,40 +1,52 @@
 package com.yann.sportscomplication.mobile
 
+import android.Manifest
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.google.android.gms.wearable.Asset
-import com.google.android.gms.wearable.PutDataMapRequest
-import com.google.android.gms.wearable.Wearable
 import com.yann.sportscomplication.mobile.databinding.ActivityMainBinding
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * Recherche un match (par équipe, joueur ou ligue) et lance son suivi.
+ *
+ * Le polling périodique et l'envoi à la montre ne vivent plus ici depuis
+ * l'introduction de MatchFollowService (foreground service, continue
+ * même app fermée) : cette Activity se contente de (1) faire les
+ * recherches, (2) démarrer/arrêter le service, et (3) refléter l'état du
+ * suivi en cours (carte du haut), via FollowedMatchPrefs au démarrage
+ * puis via un broadcast pendant qu'elle est ouverte.
+ */
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
 
-    /** Boucle de rafraîchissement du match actuellement suivi, s'il y en a un. */
-    private var followJob: Job? = null
+    private enum class SearchMode { TEAM, PLAYER, LEAGUE }
+    private var searchMode = SearchMode.TEAM
 
-    /**
-     * Logos mis en cache après le premier envoi, pour ne pas les
-     * retélécharger à chaque tick du polling — on les rejoint à chaque
-     * mise à jour envoyée pour que la montre garde toujours l'image
-     * (chaque nouvelle donnée reçue remplace entièrement l'ancienne côté
-     * montre, assets compris).
-     */
-    private var cachedHomeLogo: Asset? = null
-    private var cachedAwayLogo: Asset? = null
-
-    companion object {
-        private const val MATCH_PATH = "/match"
-        private const val POLL_INTERVAL_MS = 60_000L
+    /** Reçoit les mises à jour envoyées par MatchFollowService pendant que l'app est ouverte au premier plan. */
+    private val matchUpdatedReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            intent.toMatchResult()?.let { showFollowedCard(it) }
+        }
     }
+
+    // Le refus de cette permission n'empêche pas le suivi de fonctionner :
+    // seule la notification persistante du service resterait invisible
+    // (comportement standard Android 13+, voir doc POST_NOTIFICATIONS).
+    private val notificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,6 +61,49 @@ class MainActivity : AppCompatActivity() {
             true
         }
         binding.buttonBackToSearch.setOnClickListener { showSearchState() }
+        binding.buttonStopFollowing.setOnClickListener { stopFollowing() }
+
+        binding.radioSearchMode.setOnCheckedChangeListener { _, checkedId ->
+            searchMode = when (checkedId) {
+                R.id.radioModePlayer -> SearchMode.PLAYER
+                R.id.radioModeLeague -> SearchMode.LEAGUE
+                else -> SearchMode.TEAM
+            }
+            binding.editSearch.hint = when (searchMode) {
+                SearchMode.TEAM -> "Nom d'équipe (ex. PSG)"
+                SearchMode.PLAYER -> "Nom de joueur (ex. Mbappé)"
+                SearchMode.LEAGUE -> "Nom de ligue (ex. Ligue 1)"
+            }
+        }
+
+        requestNotificationPermissionIfNeeded()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        ContextCompat.registerReceiver(
+            this,
+            matchUpdatedReceiver,
+            IntentFilter(MatchFollowService.ACTION_MATCH_UPDATED),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        val followed = FollowedMatchPrefs.load(this)
+        if (followed != null) showFollowedCard(followed) else hideFollowedCard()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        unregisterReceiver(matchUpdatedReceiver)
+    }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+        val granted = ContextCompat.checkSelfPermission(
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     private fun runSearch() {
@@ -56,124 +111,133 @@ class MainActivity : AppCompatActivity() {
         if (query.isEmpty()) return
 
         binding.textStatus.text = "Recherche de \"$query\"…"
-        lifecycleScope.launch {
-            val teams = try {
-                SportsDbApi.searchTeams(query)
-            } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "Erreur réseau", Toast.LENGTH_SHORT).show()
-                emptyList()
-            }
 
+        when (searchMode) {
+            SearchMode.TEAM -> searchTeams(query)
+            SearchMode.PLAYER -> searchPlayers(query)
+            SearchMode.LEAGUE -> searchLeagues(query)
+        }
+    }
+
+    private fun searchTeams(query: String) {
+        lifecycleScope.launch {
+            val teams = safeCall { SportsDbApi.searchTeams(query) }
             if (teams.isEmpty()) {
                 binding.textStatus.text = "Aucune équipe trouvée pour \"$query\""
                 binding.recyclerView.adapter = null
                 return@launch
             }
-
             binding.textStatus.text = "${teams.size} équipe(s) trouvée(s) — choisis-en une"
-            binding.recyclerView.adapter = TeamsAdapter(teams) { team -> onTeamSelected(team) }
+            binding.recyclerView.adapter = SimpleListAdapter(teams, { it.name }) { team ->
+                showMatchesForTeamToday(team.id, team.name)
+            }
         }
     }
 
-    private fun onTeamSelected(team: TeamResult) {
-        binding.textStatus.text = "Chargement des matchs de ${team.name}…"
-        binding.buttonBackToSearch.visibility = android.view.View.VISIBLE
-
+    private fun searchPlayers(query: String) {
         lifecycleScope.launch {
-            val matches = try {
-                SportsDbApi.getMatchesForTeam(team.id)
-            } catch (e: Exception) {
-                Toast.makeText(this@MainActivity, "Erreur réseau", Toast.LENGTH_SHORT).show()
-                emptyList()
-            }
-
-            if (matches.isEmpty()) {
-                binding.textStatus.text = "Aucun match trouvé pour ${team.name}"
+            val players = safeCall { SportsDbApi.searchPlayers(query) }
+            if (players.isEmpty()) {
+                binding.textStatus.text = "Aucun joueur trouvé pour \"$query\""
                 binding.recyclerView.adapter = null
                 return@launch
             }
-
-            binding.textStatus.text = "Matchs de ${team.name} — choisis celui à suivre"
-            binding.recyclerView.adapter = MatchesAdapter(matches) { match -> onMatchSelected(match) }
-        }
-    }
-
-    private fun onMatchSelected(match: MatchResult) {
-        followJob?.cancel()
-        cachedHomeLogo = null
-        cachedAwayLogo = null
-
-        followJob = lifecycleScope.launch {
-            // Premier envoi : télécharge les logos et les met en cache.
-            fetchLogos(match)
-            sendMatchToWatch(match)
-            Toast.makeText(this@MainActivity, "Envoyé à la montre : ${match.title}", Toast.LENGTH_SHORT).show()
-
-            // Rafraîchissement périodique tant que le match n'est pas terminé.
-            var current = match
-            while (isActive && !current.isFinished) {
-                delay(POLL_INTERVAL_MS)
-                val updated = try {
-                    SportsDbApi.lookupEvent(current.id)
-                } catch (e: Exception) {
-                    null
-                } ?: continue
-
-                if (updated != current) {
-                    sendMatchToWatch(updated)
-                    current = updated
+            binding.textStatus.text = "${players.size} joueur(s) trouvé(s) — choisis-en un"
+            binding.recyclerView.adapter = SimpleListAdapter(
+                players,
+                { "${it.name} (${it.teamName ?: "équipe inconnue"})" }
+            ) { player ->
+                val teamId = player.teamId
+                if (teamId == null) {
+                    Toast.makeText(this@MainActivity, "Équipe inconnue pour ce joueur", Toast.LENGTH_SHORT).show()
+                } else {
+                    showMatchesForTeamToday(teamId, player.teamName ?: player.name)
                 }
             }
         }
     }
 
-    private suspend fun fetchLogos(match: MatchResult) {
-        cachedHomeLogo = match.idHomeTeam?.let { downloadLogoAsset(it) }
-        cachedAwayLogo = match.idAwayTeam?.let { downloadLogoAsset(it) }
-    }
-
-    private suspend fun downloadLogoAsset(teamId: String): Asset? {
-        val url = try {
-            SportsDbApi.getTeamBadgeUrl(teamId)
-        } catch (e: Exception) {
-            null
-        } ?: return null
-
-        val bytes = try {
-            SportsDbApi.downloadBytes(url)
-        } catch (e: Exception) {
-            null
-        } ?: return null
-
-        return Asset.createFromBytes(bytes)
-    }
-
-    private fun sendMatchToWatch(match: MatchResult) {
-        val request = PutDataMapRequest.create(MATCH_PATH).apply {
-            dataMap.putString("homeTeam", match.homeTeam)
-            dataMap.putString("awayTeam", match.awayTeam)
-            dataMap.putString("homeScore", match.homeScore ?: "")
-            dataMap.putString("awayScore", match.awayScore ?: "")
-            dataMap.putString("status", match.status)
-            match.kickoffEpochMillis?.let { dataMap.putLong("kickoffEpochMillis", it) }
-            cachedHomeLogo?.let { dataMap.putAsset("homeLogo", it) }
-            cachedAwayLogo?.let { dataMap.putAsset("awayLogo", it) }
-            // Force un DataChanged même si le contenu texte n'a pas bougé
-            // depuis le dernier envoi (la Data Layer API ignore sinon un
-            // putDataItem identique au précédent).
-            dataMap.putLong("timestamp", System.currentTimeMillis())
-        }.asPutDataRequest().setUrgent()
-
-        Wearable.getDataClient(this).putDataItem(request)
-            .addOnFailureListener {
-                Toast.makeText(this, "Échec de l'envoi vers la montre", Toast.LENGTH_SHORT).show()
+    private fun searchLeagues(query: String) {
+        lifecycleScope.launch {
+            val leagues = safeCall { SportsDbApi.searchLeagues(query) }
+            if (leagues.isEmpty()) {
+                binding.textStatus.text = "Aucune ligue trouvée pour \"$query\""
+                binding.recyclerView.adapter = null
+                return@launch
             }
+            binding.textStatus.text = "${leagues.size} ligue(s) trouvée(s) — choisis-en une"
+            binding.recyclerView.adapter = SimpleListAdapter(leagues, { it.name }) { league ->
+                showMatchesForLeagueToday(league.id, league.name)
+            }
+        }
+    }
+
+    private fun showMatchesForTeamToday(teamId: String, label: String) {
+        binding.textStatus.text = "Chargement des matchs de $label…"
+        lifecycleScope.launch {
+            // getMatchesForTeam renvoie les derniers/prochains matchs (pas
+            // forcément aujourd'hui) — filtrage côté client nécessaire ici,
+            // contrairement à showMatchesForLeagueToday où eventsday.php
+            // filtre déjà par date côté serveur.
+            val matches = safeCall { SportsDbApi.getMatchesForTeam(teamId) }
+                .filter { SportsDbApi.isToday(it.date) }
+            showMatchResults(matches, label)
+        }
+    }
+
+    private fun showMatchesForLeagueToday(leagueId: String, label: String) {
+        binding.textStatus.text = "Chargement des matchs de $label…"
+        lifecycleScope.launch {
+            val matches = safeCall { SportsDbApi.getMatchesForLeagueToday(leagueId) }
+            showMatchResults(matches, label)
+        }
+    }
+
+    private fun showMatchResults(matches: List<MatchResult>, label: String) {
+        binding.buttonBackToSearch.visibility = View.VISIBLE
+        if (matches.isEmpty()) {
+            binding.textStatus.text = "Aucun match aujourd'hui pour $label"
+            binding.recyclerView.adapter = null
+            return
+        }
+        binding.textStatus.text = "Matchs aujourd'hui — $label"
+        binding.recyclerView.adapter = MatchesAdapter(matches) { match -> onMatchSelected(match) }
+    }
+
+    private suspend fun <T> safeCall(block: suspend () -> List<T>): List<T> = try {
+        block()
+    } catch (e: Exception) {
+        Toast.makeText(this@MainActivity, "Erreur réseau", Toast.LENGTH_SHORT).show()
+        emptyList()
+    }
+
+    private fun onMatchSelected(match: MatchResult) {
+        FollowedMatchPrefs.save(this, match)
+        MatchFollowService.start(this, match)
+        Toast.makeText(this, "Suivi démarré : ${match.title}", Toast.LENGTH_SHORT).show()
+        showFollowedCard(match)
+    }
+
+    private fun stopFollowing() {
+        MatchFollowService.stop(this)
+        WatchSync.sendCleared(this)
+        FollowedMatchPrefs.clear(this)
+        hideFollowedCard()
+    }
+
+    private fun showFollowedCard(match: MatchResult) {
+        binding.followedMatchCard.visibility = View.VISIBLE
+        binding.textFollowedTitle.text = match.title
+        binding.textFollowedDetails.text = match.details
+    }
+
+    private fun hideFollowedCard() {
+        binding.followedMatchCard.visibility = View.GONE
     }
 
     private fun showSearchState() {
-        followJob?.cancel()
-        binding.buttonBackToSearch.visibility = android.view.View.GONE
-        binding.textStatus.text = "Cherche une équipe pour commencer"
+        binding.buttonBackToSearch.visibility = View.GONE
+        binding.textStatus.text = "Cherche une équipe, un joueur ou une ligue pour commencer"
         binding.recyclerView.adapter = null
         binding.editSearch.setText("")
     }

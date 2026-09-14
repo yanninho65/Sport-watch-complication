@@ -9,11 +9,10 @@ import android.graphics.Bitmap
  * commencé n'a pas de score.
  *
  * [status] est la valeur brute renvoyée par TheSportsDB ("Not Started",
- * "1H", "2H", "Match Finished"...). [kickoffEpochMillis] est l'horodatage
- * du coup d'envoi (UTC), utilisé pour calculer une minute de jeu estimée
- * — voir MatchClock.kt. TheSportsDB (plan gratuit) ne fournit pas de
- * minute de jeu en direct fiable, donc ce n'est qu'une approximation qui
- * peut dériver de quelques minutes (arrêts de jeu, etc.).
+ * "1H", "2H", "Match Finished"...), traduite telle quelle par
+ * MatchClock.kt (aucune minute n'est plus calculée par déduction).
+ * [kickoffEpochMillis] est l'horodatage du coup d'envoi (UTC), affiché
+ * tel quel pour les matchs pas encore commencés ("À venir · 20:00").
  *
  * [homeLogo] / [awayLogo] sont les vrais logos d'équipe reçus du
  * téléphone (Asset de la Data Layer API), ou `null` si le téléchargement

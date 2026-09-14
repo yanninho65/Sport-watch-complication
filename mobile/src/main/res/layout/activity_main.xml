@@ -5,6 +5,78 @@
     android:orientation="vertical"
     android:padding="16dp">
 
+    <!--
+         Carte "match suivi" : visible uniquement quand un suivi est actif
+         (voir MainActivity.showFollowedCard / hideFollowedCard). Le
+         polling réel tourne dans MatchFollowService, pas dans l'Activity —
+         cette carte ne fait qu'en refléter l'état (via FollowedMatchPrefs
+         au démarrage, puis via un broadcast pendant que l'app est ouverte).
+    -->
+    <LinearLayout
+        android:id="@+id/followedMatchCard"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:background="#1A000000"
+        android:padding="12dp"
+        android:layout_marginBottom="12dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/textFollowedTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textStyle="bold"
+            android:textSize="16sp" />
+
+        <TextView
+            android:id="@+id/textFollowedDetails"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:textSize="13sp"
+            android:layout_marginTop="2dp" />
+
+        <Button
+            android:id="@+id/buttonStopFollowing"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="Arrêter le suivi" />
+
+    </LinearLayout>
+
+    <!-- Choix du mode de recherche : équipe (comportement historique), joueur ou ligue. -->
+    <RadioGroup
+        android:id="@+id/radioSearchMode"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <RadioButton
+            android:id="@+id/radioModeTeam"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Équipe"
+            android:checked="true" />
+
+        <RadioButton
+            android:id="@+id/radioModePlayer"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Joueur" />
+
+        <RadioButton
+            android:id="@+id/radioModeLeague"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Ligue" />
+
+    </RadioGroup>
+
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -42,7 +114,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
         android:textStyle="italic"
-        android:text="Cherche une équipe pour commencer" />
+        android:text="Cherche une équipe, un joueur ou une ligue pour commencer" />
 
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/recyclerView"

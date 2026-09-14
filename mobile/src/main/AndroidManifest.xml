@@ -3,6 +3,20 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!--
+         Nécessaires pour MatchFollowService (rafraîchissement en arrière-plan,
+         voir MatchFollowService.kt). FOREGROUND_SERVICE_DATA_SYNC est requis
+         en plus de FOREGROUND_SERVICE depuis Android 14 (targetSdk 34) pour
+         déclarer android:foregroundServiceType="dataSync" ci-dessous.
+         POST_NOTIFICATIONS conditionne l'affichage de la notification de
+         suivi sur Android 13+ (demandée à l'exécution dans MainActivity) —
+         sans elle, le service tourne quand même, seule la notification reste
+         invisible.
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
         android:allowBackup="true"
         android:label="@string/app_name"
@@ -16,6 +30,17 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!--
+             Continue le polling TheSportsDB et l'envoi à la montre même app
+             fermée (voir MatchFollowService.kt). exported=false : ce service
+             n'est destiné qu'à cette app (démarré depuis MainActivity), pas à
+             être appelé par d'autres apps installées sur le téléphone.
+        -->
+        <service
+            android:name=".MatchFollowService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 

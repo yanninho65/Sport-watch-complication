@@ -19,6 +19,11 @@ import com.google.android.gms.wearable.WearableListenerService
  * force un rafraîchissement immédiat de la complication plutôt que
  * d'attendre le prochain cycle système.
  *
+ * Un DataItem avec `cleared=true` (envoyé quand Yann supprime le match
+ * suivi depuis le téléphone) réinitialise MatchScoreStore à `null` — la
+ * complication réaffiche alors "Aucun match" au lieu de rester bloquée
+ * sur le dernier score connu.
+ *
  * onDataChanged tourne déjà sur un thread de fond fourni par le système
  * (pas le thread principal), donc les appels bloquants comme
  * Tasks.await(...) pour décoder les Assets sont sans risque ici.
@@ -32,6 +37,13 @@ class MatchListenerService : WearableListenerService() {
                 if (event.dataItem.uri.path != MATCH_PATH) continue
 
                 val dataMap = DataMapItem.fromDataItem(event.dataItem).dataMap
+
+                if (dataMap.getBoolean("cleared", false)) {
+                    MatchScoreStore.current = null
+                    requestComplicationRefresh()
+                    continue
+                }
+
                 val homeTeam = dataMap.getString("homeTeam") ?: continue
                 val awayTeam = dataMap.getString("awayTeam") ?: continue
                 val homeScore = dataMap.getString("homeScore")?.toIntOrNull()

@@ -1,8 +1,26 @@
 package com.yann.sportscomplication.mobile
 
+import android.content.Intent
+import android.os.Bundle
+
 data class TeamResult(
     val id: String,
     val name: String
+)
+
+/** Résultat d'une recherche par joueur — [teamId]/[teamName] sont son équipe actuelle (peut être null). */
+data class PlayerResult(
+    val id: String,
+    val name: String,
+    val teamId: String?,
+    val teamName: String?
+)
+
+/** Résultat d'une recherche par ligue (ex. "French Ligue 1", id "4334"). */
+data class LeagueResult(
+    val id: String,
+    val name: String,
+    val sport: String
 )
 
 data class MatchResult(
@@ -38,4 +56,58 @@ data class MatchResult(
             status.contains("Postponed", ignoreCase = true) ||
             status.contains("Cancelled", ignoreCase = true) ||
             status.contains("Abandoned", ignoreCase = true)
+}
+
+// Clés utilisées pour faire voyager un MatchResult dans un Bundle/Intent,
+// entre MainActivity et MatchFollowService (voir toExtras / toMatchResult
+// ci-dessous). Un Service n'a pas accès au MatchResult que possédait
+// l'Activity qui l'a lancé — il faut le lui transmettre explicitement.
+private const val EXTRA_ID = "com.yann.sportscomplication.mobile.extra.ID"
+private const val EXTRA_ID_HOME_TEAM = "com.yann.sportscomplication.mobile.extra.ID_HOME_TEAM"
+private const val EXTRA_ID_AWAY_TEAM = "com.yann.sportscomplication.mobile.extra.ID_AWAY_TEAM"
+private const val EXTRA_HOME_TEAM = "com.yann.sportscomplication.mobile.extra.HOME_TEAM"
+private const val EXTRA_AWAY_TEAM = "com.yann.sportscomplication.mobile.extra.AWAY_TEAM"
+private const val EXTRA_HOME_SCORE = "com.yann.sportscomplication.mobile.extra.HOME_SCORE"
+private const val EXTRA_AWAY_SCORE = "com.yann.sportscomplication.mobile.extra.AWAY_SCORE"
+private const val EXTRA_DATE = "com.yann.sportscomplication.mobile.extra.DATE"
+private const val EXTRA_TIME = "com.yann.sportscomplication.mobile.extra.TIME"
+private const val EXTRA_STATUS = "com.yann.sportscomplication.mobile.extra.STATUS"
+private const val EXTRA_LEAGUE = "com.yann.sportscomplication.mobile.extra.LEAGUE"
+private const val EXTRA_KICKOFF = "com.yann.sportscomplication.mobile.extra.KICKOFF"
+
+/** Sérialise ce match dans un Bundle, pour le transmettre à MatchFollowService via un Intent. */
+fun MatchResult.toExtras(): Bundle = Bundle().apply {
+    putString(EXTRA_ID, id)
+    putString(EXTRA_ID_HOME_TEAM, idHomeTeam)
+    putString(EXTRA_ID_AWAY_TEAM, idAwayTeam)
+    putString(EXTRA_HOME_TEAM, homeTeam)
+    putString(EXTRA_AWAY_TEAM, awayTeam)
+    putString(EXTRA_HOME_SCORE, homeScore)
+    putString(EXTRA_AWAY_SCORE, awayScore)
+    putString(EXTRA_DATE, date)
+    putString(EXTRA_TIME, time)
+    putString(EXTRA_STATUS, status)
+    putString(EXTRA_LEAGUE, league)
+    kickoffEpochMillis?.let { putLong(EXTRA_KICKOFF, it) }
+}
+
+/** Reconstruit un MatchResult depuis les extras posés par [toExtras], ou null si incomplet/absent. */
+fun Intent.toMatchResult(): MatchResult? {
+    val id = getStringExtra(EXTRA_ID) ?: return null
+    val homeTeam = getStringExtra(EXTRA_HOME_TEAM) ?: return null
+    val awayTeam = getStringExtra(EXTRA_AWAY_TEAM) ?: return null
+    return MatchResult(
+        id = id,
+        idHomeTeam = getStringExtra(EXTRA_ID_HOME_TEAM),
+        idAwayTeam = getStringExtra(EXTRA_ID_AWAY_TEAM),
+        homeTeam = homeTeam,
+        awayTeam = awayTeam,
+        homeScore = getStringExtra(EXTRA_HOME_SCORE),
+        awayScore = getStringExtra(EXTRA_AWAY_SCORE),
+        date = getStringExtra(EXTRA_DATE) ?: "?",
+        time = getStringExtra(EXTRA_TIME),
+        status = getStringExtra(EXTRA_STATUS).orEmpty(),
+        league = getStringExtra(EXTRA_LEAGUE).orEmpty(),
+        kickoffEpochMillis = if (hasExtra(EXTRA_KICKOFF)) getLongExtra(EXTRA_KICKOFF, 0L) else null
+    )
 }

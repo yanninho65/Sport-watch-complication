@@ -26,9 +26,10 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
  * Les données viennent de MatchScoreStore, alimenté par
  * MatchListenerService (Wear Data Layer API). UPDATE_PERIOD_SECONDS=60
  * dans le manifest fait que le système rappelle onComplicationRequest
- * environ chaque minute même sans nouvelle donnée du téléphone — ça
- * permet à MatchClock de recalculer une minute de jeu à jour sans
- * dépendre d'un renvoi du téléphone à chaque tick.
+ * environ chaque minute même sans nouvelle donnée du téléphone — utile
+ * si jamais un rafraîchissement système est nécessaire, même si
+ * MatchClock n'a plus de minute à recalculer par lui-même (voir
+ * MatchClock.kt : le statut affiché vient tel quel de TheSportsDB).
  */
 class ScoreComplicationService : ComplicationDataSourceService() {
 

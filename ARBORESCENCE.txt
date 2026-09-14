@@ -1,0 +1,25 @@
+Arborescence des fichiers livrés dans ce zip — à extraire à la racine
+du dépôt Sport-watch-complication (écrase les fichiers existants,
+crée les nouveaux). Deux fichiers doivent en plus être SUPPRIMÉS à la
+main (un zip ne peut pas le faire) — voir "À FAIRE À LA MAIN" ci-dessous.
+
+sport-watch-complication-maj.zip
+├── README.md                                                          [modifié]
+├── mobile/src/main/AndroidManifest.xml                                [modifié]
+├── mobile/src/main/kotlin/.../mobile/FollowedMatchPrefs.kt            [nouveau]
+├── mobile/src/main/kotlin/.../mobile/MainActivity.kt                  [modifié]
+├── mobile/src/main/kotlin/.../mobile/MatchFollowService.kt            [nouveau]
+├── mobile/src/main/kotlin/.../mobile/Models.kt                        [modifié]
+├── mobile/src/main/kotlin/.../mobile/SimpleListAdapter.kt             [nouveau — remplace TeamsAdapter.kt]
+├── mobile/src/main/kotlin/.../mobile/SportsDbApi.kt                   [modifié]
+├── mobile/src/main/kotlin/.../mobile/WatchSync.kt                     [nouveau]
+├── mobile/src/main/res/drawable/ic_notification.xml                  [nouveau]
+├── mobile/src/main/res/layout/activity_main.xml                       [modifié]
+├── wear/src/main/kotlin/.../MatchClock.kt                             [modifié]
+├── wear/src/main/kotlin/.../MatchListenerService.kt                   [modifié]
+├── wear/src/main/kotlin/.../MatchScore.kt                             [modifié]
+└── wear/src/main/kotlin/.../ScoreComplicationService.kt               [modifié]
+
+À FAIRE À LA MAIN après extraction (un zip ne supprime jamais de fichiers) :
+  git rm wear/AndroidManifest.xml
+  git rm mobile/src/main/kotlin/com/yann/sportscomplication/mobile/TeamsAdapter.kt

@@ -18,6 +18,14 @@ import java.util.TimeZone
  * NOTE : "3" est la clé de test publique documentée par TheSportsDB. Si
  * les quotas deviennent limitants, remplace-la par une clé gratuite
  * obtenue sur https://www.thesportsdb.com/api.php (inscription requise).
+ *
+ * LIMITES DU PLAN GRATUIT (vérifiées en pratique, pas seulement dans la
+ * doc) : les recherches (équipe/joueur) ne renvoient souvent qu'1-2
+ * résultats, et all_leagues.php ne renvoie qu'une dizaine de grandes
+ * ligues de football (Premier League, Liga, Serie A, Bundesliga,
+ * Ligue 1...) — largement suffisant pour PSG/OM/Ligue 1, mais pas pour
+ * des ligues plus confidentielles ou d'autres sports. Un passage en
+ * clé Premium lève ces limites.
  */
 object SportsDbApi {
 
@@ -37,6 +45,49 @@ object SportsDbApi {
         }
     }
 
+    /** Recherche de joueurs par nom — chaque résultat porte son équipe actuelle (idTeam/strTeam), si connue. */
+    suspend fun searchPlayers(query: String): List<PlayerResult> = withContext(Dispatchers.IO) {
+        val encoded = URLEncoder.encode(query, "UTF-8")
+        val json = fetchJson("$BASE_URL/searchplayers.php?p=$encoded")
+        // Particularité de cet endpoint : la racine JSON s'appelle "player"
+        // (singulier), contrairement à "teams"/"events" (pluriels) ailleurs
+        // dans l'API — vérifié en pratique, pas une coquille de notre part.
+        val players = json.optJSONArray("player") ?: return@withContext emptyList()
+
+        (0 until players.length()).mapNotNull { i ->
+            val p = players.optJSONObject(i) ?: return@mapNotNull null
+            val id = nullableString(p, "idPlayer") ?: return@mapNotNull null
+            val name = nullableString(p, "strPlayer") ?: return@mapNotNull null
+            PlayerResult(
+                id = id,
+                name = name,
+                teamId = nullableString(p, "idTeam"),
+                teamName = nullableString(p, "strTeam")
+            )
+        }
+    }
+
+    /**
+     * Recherche de ligues par nom. Il n'existe pas d'endpoint v1 de
+     * recherche textuelle pour les ligues (contrairement aux équipes et
+     * joueurs) — on récupère donc la liste complète via all_leagues.php
+     * et on filtre côté client sur le nom. Avec la clé gratuite, cette
+     * liste ne contient qu'une dizaine de grandes ligues de football
+     * (voir note de classe ci-dessus).
+     */
+    suspend fun searchLeagues(query: String): List<LeagueResult> = withContext(Dispatchers.IO) {
+        val json = fetchJson("$BASE_URL/all_leagues.php")
+        val leagues = json.optJSONArray("leagues") ?: return@withContext emptyList()
+
+        (0 until leagues.length()).mapNotNull { i ->
+            val l = leagues.optJSONObject(i) ?: return@mapNotNull null
+            val id = nullableString(l, "idLeague") ?: return@mapNotNull null
+            val name = nullableString(l, "strLeague") ?: return@mapNotNull null
+            if (!name.contains(query, ignoreCase = true)) return@mapNotNull null
+            LeagueResult(id = id, name = name, sport = l.optString("strSport", ""))
+        }
+    }
+
     /**
      * Combine les derniers matchs joués et les prochains matchs d'une
      * équipe, les plus proches de "maintenant" en premier.
@@ -45,6 +96,15 @@ object SportsDbApi {
         val last = fetchEvents("$BASE_URL/eventslast.php?id=$teamId")
         val next = fetchEvents("$BASE_URL/eventsnext.php?id=$teamId")
         last + next
+    }
+
+    /**
+     * Matchs du jour pour une ligue donnée (déjà filtrés "aujourd'hui" côté
+     * serveur par eventsday.php, contrairement à getMatchesForTeam qui doit
+     * être filtré côté client — voir MainActivity.isToday).
+     */
+    suspend fun getMatchesForLeagueToday(leagueId: String): List<MatchResult> = withContext(Dispatchers.IO) {
+        fetchEvents("$BASE_URL/eventsday.php?d=${todayUtcDateString()}&l=$leagueId")
     }
 
     /** Relit un match précis par son id — utilisé pour le polling périodique. */
@@ -81,6 +141,19 @@ object SportsDbApi {
             connection?.disconnect()
         }
     }
+
+    /**
+     * Date du jour au format "yyyy-MM-dd" en UTC — TheSportsDB exprime ses
+     * dates d'événement en UTC (`dateEvent`), donc "aujourd'hui" doit être
+     * comparé dans le même référentiel pour que le filtrage soit correct.
+     */
+    fun todayUtcDateString(): String =
+        SimpleDateFormat("yyyy-MM-dd", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }.format(java.util.Date())
+
+    /** Vrai si [eventDate] (format "yyyy-MM-dd") correspond à aujourd'hui en UTC. */
+    fun isToday(eventDate: String): Boolean = eventDate == todayUtcDateString()
 
     private fun fetchEvents(url: String): List<MatchResult> {
         val json = fetchJson(url)
