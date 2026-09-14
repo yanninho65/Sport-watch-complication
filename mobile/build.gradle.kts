@@ -8,7 +8,12 @@ android {
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.yann.sportscomplication.mobile"
+        // IMPORTANT : doit être identique à l'applicationId du module
+        // wear/ — la Data Layer API ne synchronise les données qu'entre
+        // un téléphone et une montre partageant le même nom de package.
+        // Avec des packages différents, l'envoi réussit silencieusement
+        // côté téléphone mais rien n'arrive jamais côté montre.
+        applicationId = "com.yann.sportscomplication"
         minSdk = 26
         targetSdk = 34
         versionCode = 1
