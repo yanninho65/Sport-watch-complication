@@ -5,12 +5,18 @@ import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.android.gms.wearable.PutDataMapRequest
+import com.google.android.gms.wearable.Wearable
 import com.yann.sportscomplication.mobile.databinding.ActivityMainBinding
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityMainBinding
+
+    companion object {
+        private const val MATCH_PATH = "/match"
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -75,9 +81,28 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun onMatchSelected(match: MatchResult) {
-        // TODO(prochaine étape) : envoyer ce match vers la montre via la
-        // Wear Data Layer API (DataClient), à la place de ce Toast.
-        Toast.makeText(this, "Sélectionné : ${match.title}", Toast.LENGTH_LONG).show()
+        // TODO(prochaine étape) : envoyer aussi les logos des deux équipes
+        // (téléchargés + convertis en Asset) — pour l'instant seul le
+        // texte est transmis, la montre garde son icône placeholder.
+        val request = PutDataMapRequest.create(MATCH_PATH).apply {
+            dataMap.putString("homeTeam", match.homeTeam)
+            dataMap.putString("awayTeam", match.awayTeam)
+            dataMap.putString("homeScore", match.homeScore ?: "")
+            dataMap.putString("awayScore", match.awayScore ?: "")
+            dataMap.putString("minute", match.minuteLabel)
+            // Force un DataChanged même si un match identique est
+            // resélectionné (la Data Layer API ignore un putDataItem dont
+            // le contenu n'a pas changé depuis le dernier envoi).
+            dataMap.putLong("timestamp", System.currentTimeMillis())
+        }.asPutDataRequest().setUrgent()
+
+        Wearable.getDataClient(this).putDataItem(request)
+            .addOnSuccessListener {
+                Toast.makeText(this, "Envoyé à la montre : ${match.title}", Toast.LENGTH_SHORT).show()
+            }
+            .addOnFailureListener {
+                Toast.makeText(this, "Échec de l'envoi vers la montre", Toast.LENGTH_SHORT).show()
+            }
     }
 
     private fun showSearchState() {

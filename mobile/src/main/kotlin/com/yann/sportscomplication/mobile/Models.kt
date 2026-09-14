@@ -26,4 +26,13 @@ data class MatchResult(
 
     val details: String
         get() = "$league · $date${time?.let { " $it" } ?: ""} · $status"
+
+    /**
+     * Ce qu'on envoie à la montre comme équivalent de la "minute" —
+     * TheSportsDB (plan gratuit) ne donne pas de minute de jeu en direct
+     * fiable, donc on utilise le statut si connu ("Match Finished"...),
+     * sinon la date/heure du match à venir.
+     */
+    val minuteLabel: String
+        get() = status.ifBlank { "$date${time?.let { " $it" } ?: ""}" }
 }
