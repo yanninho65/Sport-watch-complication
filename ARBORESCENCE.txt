@@ -1,30 +1,34 @@
 Arborescence des fichiers livrés dans ce zip — à extraire à la racine
-du dépôt Sport-watch-complication (écrase les fichiers existants,
-crée les nouveaux). Regroupe les deux étapes du code (ajout du mode
-combiné, puis suppression des modes domicile seul / extérieur seul)
-et la mise à jour du README : c'est l'état final, pas un diff
-intermédiaire. Trois fichiers doivent en plus être SUPPRIMÉS à la main
-(un zip ne peut pas le faire) — voir "À FAIRE À LA MAIN" ci-dessous.
+du dépôt Sport-watch-complication (écrase les fichiers existants).
+Aucun fichier à supprimer cette fois-ci.
 
-complication-ronde-combinee-maj.zip
+complication-rectangle-monochrome.zip
 ├── README.md                                                  [modifié]
 ├── wear/src/main/AndroidManifest.xml                          [modifié]
-├── wear/src/main/kotlin/.../ComplicationImageComposer.kt      [nouveau]
+├── wear/src/main/kotlin/.../ComplicationImageComposer.kt      [modifié]
 └── wear/src/main/kotlin/.../ScoreComplicationService.kt       [modifié]
 
-Ce que ça change au final :
-- Plus aucun choix à l'assignation d'un cercle du Dashboard : la
-  complication SMALL_IMAGE affiche toujours logo domicile + score +
-  logo extérieur dans une seule image composée (voir
-  ComplicationImageComposer), quel que soit le cercle utilisé.
-- L'écran de config domicile/extérieur (et le point d'entrée associé
-  dans le manifest) a disparu : il n'y a plus rien à configurer.
-- L'emplacement central Zenith (LONG_TEXT) n'a pas changé.
-- README.md mis à jour en conséquence (description, état actuel,
-  limites connues, arborescence, étapes de test).
+Ce que ça change :
+- Nouveau type de complication supporté : MONOCHROMATIC_IMAGE, pour
+  un emplacement "petit rectangle" qui n'accepte que du monochrome
+  (ex. la bande d'icônes au-dessus de la carte notification).
+- ComplicationImageComposer.composeMonochromeWide() compose une image
+  rectangulaire large (480x200) : logo domicile à gauche, score au
+  centre, logo extérieur à droite — même agencement que le cercle du
+  Dashboard, mais en silhouette blanche sur fond transparent (les
+  logos couleur sont recolorés en blanc via leur canal alpha, sans
+  fond peint). Le système applique ensuite sa propre teinte par-dessus.
+- ScoreComplicationService répond maintenant à LONG_TEXT, SMALL_IMAGE
+  ET MONOCHROMATIC_IMAGE.
+- README.md mis à jour (description, état actuel, arborescence, étape
+  de test) pour ce troisième type.
 
-À FAIRE À LA MAIN après extraction (un zip ne supprime jamais de
-fichiers) — ces 3 fichiers n'ont plus lieu d'être :
-  git rm wear/src/main/kotlin/com/yann/sportscomplication/TeamSidePrefs.kt
-  git rm wear/src/main/kotlin/com/yann/sportscomplication/TeamSideConfigActivity.kt
-  git rm wear/src/main/res/layout/activity_team_side_config.xml
+À tester sur la montre : assigne la complication "Score en direct" à
+l'emplacement petit rectangle concerné — le sélecteur ne devrait
+proposer que MONOCHROMATIC_IMAGE si c'est bien le seul type accepté
+par ce slot.
+
+À surveiller : si l'un des deux logos vient sur un fond opaque (pas de
+transparence), la silhouette ressortira comme un simple rectangle
+blanc plutôt qu'un contour reconnaissable — c'est une limite du
+recolorage par canal alpha, pas un bug.

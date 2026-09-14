@@ -4,6 +4,8 @@ import android.graphics.drawable.Icon
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType
 import androidx.wear.watchface.complications.data.LongTextComplicationData
+import androidx.wear.watchface.complications.data.MonochromaticImage
+import androidx.wear.watchface.complications.data.MonochromaticImageComplicationData
 import androidx.wear.watchface.complications.data.NoDataComplicationData
 import androidx.wear.watchface.complications.data.PlainComplicationText
 import androidx.wear.watchface.complications.data.SmallImage
@@ -15,13 +17,17 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
 /**
  * Fournit les données de score en direct aux complications compatibles.
  *
- * Deux types sont supportés (voir AndroidManifest.xml) :
- *  - LONG_TEXT   : pour l'emplacement central de Zenith
- *                  (ex. "PSG 2-1 OM · 64'")
- *  - SMALL_IMAGE : pour les complications cercle du Dashboard Samsung
- *                  (image composée réunissant les deux logos ET le score,
- *                  voir ComplicationImageComposer — pas de config à
- *                  l'assignation, un seul rendu possible)
+ * Trois types sont supportés (voir AndroidManifest.xml) :
+ *  - LONG_TEXT          : pour l'emplacement central de Zenith
+ *                         (ex. "PSG 2-1 OM · 64'")
+ *  - SMALL_IMAGE        : pour les complications cercle du Dashboard Samsung
+ *                         (image composée réunissant les deux logos ET le
+ *                         score, en couleur — voir ComplicationImageComposer)
+ *  - MONOCHROMATIC_IMAGE : pour un emplacement "petit rectangle" qui n'accepte
+ *                         que du monochrome (ex. bande au-dessus de la carte
+ *                         notification) — même principe, logos convertis en
+ *                         silhouette blanche (voir
+ *                         ComplicationImageComposer.composeMonochromeWide)
  *
  * Les données viennent de MatchScoreStore, alimenté par
  * MatchListenerService (Wear Data Layer API). UPDATE_PERIOD_SECONDS=60
@@ -42,6 +48,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
         val data: ComplicationData = when (request.complicationType) {
             ComplicationType.LONG_TEXT -> buildLongText(match)
             ComplicationType.SMALL_IMAGE -> buildSmallImage(match)
+            ComplicationType.MONOCHROMATIC_IMAGE -> buildMonochromaticImage(match)
             else -> NoDataComplicationData()
         }
 
@@ -65,6 +72,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
         return when (type) {
             ComplicationType.LONG_TEXT -> buildLongText(preview)
             ComplicationType.SMALL_IMAGE -> buildSmallImage(preview)
+            ComplicationType.MONOCHROMATIC_IMAGE -> buildMonochromaticImage(preview)
             else -> null
         }
     }
@@ -110,6 +118,24 @@ class ScoreComplicationService : ComplicationDataSourceService() {
             // des logos ne sont jamais teintées par le thème du cadran.
             // Contrepartie : pas d'affichage en mode Always-On Display.
             smallImage = SmallImage.Builder(icon, SmallImageType.PHOTO).build(),
+            contentDescription = PlainComplicationText.Builder(description).build()
+        ).build()
+    }
+
+    private fun buildMonochromaticImage(match: MatchScore?): ComplicationData {
+        val icon = Icon.createWithBitmap(ComplicationImageComposer.composeMonochromeWide(match))
+
+        val description = match?.let {
+            val scoreText = if (it.homeScore != null && it.awayScore != null) {
+                "${it.homeScore}-${it.awayScore}"
+            } else {
+                "vs"
+            }
+            "${it.homeTeam} $scoreText ${it.awayTeam}"
+        } ?: "Aucun match sélectionné"
+
+        return MonochromaticImageComplicationData.Builder(
+            monochromaticImage = MonochromaticImage.Builder(icon).build(),
             contentDescription = PlainComplicationText.Builder(description).build()
         ).build()
     }

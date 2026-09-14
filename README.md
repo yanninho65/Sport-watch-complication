@@ -6,6 +6,10 @@ Complication Wear OS qui affiche le score d'un match en direct :
 - **SMALL_IMAGE** → pour les complications cercle du Dashboard Samsung
   (image composée réunissant les deux logos d'équipe ET le score dans
   un seul cercle, voir `ComplicationImageComposer`)
+- **MONOCHROMATIC_IMAGE** → pour un emplacement "petit rectangle" qui
+  n'accepte que du monochrome (ex. bande au-dessus de la carte
+  notification) — même principe, logos et score composés en silhouette
+  blanche que le système teinte lui-même (voir `ComplicationImageComposer`)
 
 Deux modules dans ce repo :
 - `wear/` — la complication elle-même (montre)
@@ -13,14 +17,19 @@ Deux modules dans ce repo :
 
 ## État actuel
 
-**Montre (`wear/`)** : `ScoreComplicationService` répond aux deux types
+**Montre (`wear/`)** : `ScoreComplicationService` répond aux trois types
 de complications. Pour SMALL_IMAGE, `ComplicationImageComposer` dessine
 à la volée une image carrée unique (logo domicile à gauche, score au
 centre, logo extérieur à droite, fond circulaire sombre pour la
 lisibilité) — le système la recadre en cercle, tout est donc positionné
 sur la bande horizontale centrale pour ne rien perdre au recadrage.
-Aucune config n'est demandée à l'assignation : le rendu est le même
-sur n'importe quel cercle du Dashboard. `MatchListenerService` reçoit
+Pour MONOCHROMATIC_IMAGE, `ComplicationImageComposer` compose une image
+rectangulaire large avec le même agencement (logo domicile, score, logo
+extérieur), mais en silhouette blanche uniquement — les logos couleur
+sont recolorés en blanc via leur canal alpha, sans fond peint, pour
+correspondre à la convention monochrome (le système applique ensuite sa
+propre teinte). Aucune config n'est demandée à l'assignation, quel que
+soit le type : le rendu est le même partout. `MatchListenerService` reçoit
 les mises à jour du téléphone (chemin `/match`), décode les deux logos
 reçus en Asset, met à jour `MatchScoreStore`, et force un
 rafraîchissement immédiat. Un DataItem `cleared=true` (envoyé quand le
@@ -128,7 +137,7 @@ sports-complication-watch/
 │       ├── AndroidManifest.xml   déclare les deux services (complication + listener)
 │       ├── kotlin/.../
 │       │   ├── ScoreComplicationService.kt
-│       │   ├── ComplicationImageComposer.kt   dessine l'image combinée (2 logos + score) du SMALL_IMAGE
+│       │   ├── ComplicationImageComposer.kt   dessine les images combinées (2 logos + score) du SMALL_IMAGE et du MONOCHROMATIC_IMAGE
 │       │   ├── MatchListenerService.kt   reçoit les données du téléphone (+ signal "cleared")
 │       │   ├── MatchClock.kt     traduit le statut TheSportsDB en français (sans calcul de minute)
 │       │   └── MatchScore.kt     modèle de données + cache en mémoire
@@ -184,7 +193,10 @@ Une fois l'APK `wear` installé :
 2. Sur le **Dashboard** Samsung, assigne-la à une des complications
    cercle (type SMALL_IMAGE) — aucune config ne s'affiche, le cercle
    montrera directement les deux logos + le score
-3. Cherche un match dans l'app téléphone (équipe, joueur ou ligue) et
+3. Sur un emplacement "petit rectangle" qui n'accepte que du monochrome,
+   assigne-la (type MONOCHROMATIC_IMAGE) — même rendu logo + score + logo,
+   en silhouette blanche teintée par le système
+4. Cherche un match dans l'app téléphone (équipe, joueur ou ligue) et
    sélectionne-le — la montre devrait se mettre à jour en quelques
    secondes, puis continuer à se rafraîchir toutes les minutes, même si
    tu fermes l'app téléphone. Le bouton "Arrêter le suivi" dans l'app
