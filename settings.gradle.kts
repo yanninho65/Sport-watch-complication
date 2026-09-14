@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "SportsComplication"
 include(":wear")
+include(":mobile")
