@@ -36,6 +36,22 @@
                 android:value="0" />
         </service>
 
+        <!--
+             Reçoit les mises à jour de match envoyées par l'app téléphone
+             via la Data Layer API (chemin "/match").
+        -->
+        <service
+            android:name=".MatchListenerService"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.google.android.gms.wearable.DATA_CHANGED" />
+                <data
+                    android:scheme="wear"
+                    android:host="*"
+                    android:pathPrefix="/match" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>
