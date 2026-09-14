@@ -3,7 +3,6 @@ package com.yann.sportscomplication
 import android.app.Activity
 import android.os.Bundle
 import android.widget.Button
-import androidx.wear.watchface.complications.datasource.EXTRA_CONFIG_COMPLICATION_ID
 
 /**
  * Écran affiché par le système quand l'utilisateur assigne "Score en
@@ -18,7 +17,15 @@ class TeamSideConfigActivity : Activity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_team_side_config)
 
-        val complicationId = intent.getIntExtra(EXTRA_CONFIG_COMPLICATION_ID, -1)
+        // Valeur littérale plutôt qu'une constante importée de la librairie
+        // (androidx.wear.watchface.complications.datasource) : cette clé
+        // n'est pas exposée de façon stable/résolvable dans la version
+        // 1.3.0 utilisée ici, mais la chaîne elle-même est documentée et
+        // stable (héritée de l'ancienne android.support.wearable.*).
+        val complicationId = intent.getIntExtra(
+            "android.support.wearable.complications.EXTRA_CONFIG_COMPLICATION_ID",
+            -1
+        )
 
         findViewById<Button>(R.id.buttonHome).setOnClickListener {
             confirm(complicationId, TeamSidePrefs.SIDE_HOME)

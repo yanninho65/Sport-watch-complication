@@ -31,8 +31,8 @@ object SportsDbApi {
 
         (0 until teams.length()).mapNotNull { i ->
             val team = teams.optJSONObject(i) ?: return@mapNotNull null
-            val id = team.optString("idTeam", null) ?: return@mapNotNull null
-            val name = team.optString("strTeam", null) ?: return@mapNotNull null
+            val id = nullableString(team, "idTeam") ?: return@mapNotNull null
+            val name = nullableString(team, "strTeam") ?: return@mapNotNull null
             TeamResult(id = id, name = name)
         }
     }
@@ -91,7 +91,7 @@ object SportsDbApi {
     }
 
     private fun parseMatch(e: JSONObject): MatchResult? {
-        val id = e.optString("idEvent", null) ?: return null
+        val id = nullableString(e, "idEvent") ?: return null
         val date = e.optString("dateEvent", "?")
         val time = nullableString(e, "strTime")
 
