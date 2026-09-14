@@ -1,25 +1,27 @@
 Arborescence des fichiers livrés dans ce zip — à extraire à la racine
 du dépôt Sport-watch-complication (écrase les fichiers existants,
-crée les nouveaux). Deux fichiers doivent en plus être SUPPRIMÉS à la
-main (un zip ne peut pas le faire) — voir "À FAIRE À LA MAIN" ci-dessous.
+crée les nouveaux). Regroupe les deux étapes (ajout du mode combiné,
+puis suppression des modes domicile seul / extérieur seul) : c'est
+l'état final, pas un diff intermédiaire. Trois fichiers doivent en
+plus être SUPPRIMÉS à la main (un zip ne peut pas le faire) — voir
+"À FAIRE À LA MAIN" ci-dessous.
 
-sport-watch-complication-maj.zip
-├── README.md                                                          [modifié]
-├── mobile/src/main/AndroidManifest.xml                                [modifié]
-├── mobile/src/main/kotlin/.../mobile/FollowedMatchPrefs.kt            [nouveau]
-├── mobile/src/main/kotlin/.../mobile/MainActivity.kt                  [modifié]
-├── mobile/src/main/kotlin/.../mobile/MatchFollowService.kt            [nouveau]
-├── mobile/src/main/kotlin/.../mobile/Models.kt                        [modifié]
-├── mobile/src/main/kotlin/.../mobile/SimpleListAdapter.kt             [nouveau — remplace TeamsAdapter.kt]
-├── mobile/src/main/kotlin/.../mobile/SportsDbApi.kt                   [modifié]
-├── mobile/src/main/kotlin/.../mobile/WatchSync.kt                     [nouveau]
-├── mobile/src/main/res/drawable/ic_notification.xml                  [nouveau]
-├── mobile/src/main/res/layout/activity_main.xml                       [modifié]
-├── wear/src/main/kotlin/.../MatchClock.kt                             [modifié]
-├── wear/src/main/kotlin/.../MatchListenerService.kt                   [modifié]
-├── wear/src/main/kotlin/.../MatchScore.kt                             [modifié]
-└── wear/src/main/kotlin/.../ScoreComplicationService.kt               [modifié]
+complication-ronde-combinee-maj.zip
+├── wear/src/main/AndroidManifest.xml                        [modifié]
+├── wear/src/main/kotlin/.../ComplicationImageComposer.kt     [nouveau]
+└── wear/src/main/kotlin/.../ScoreComplicationService.kt      [modifié]
 
-À FAIRE À LA MAIN après extraction (un zip ne supprime jamais de fichiers) :
-  git rm wear/AndroidManifest.xml
-  git rm mobile/src/main/kotlin/com/yann/sportscomplication/mobile/TeamsAdapter.kt
+Ce que ça change au final :
+- Plus aucun choix à l'assignation d'un cercle du Dashboard : la
+  complication SMALL_IMAGE affiche toujours logo domicile + score +
+  logo extérieur dans une seule image composée (voir
+  ComplicationImageComposer), quel que soit le cercle utilisé.
+- L'écran de config domicile/extérieur (et le point d'entrée associé
+  dans le manifest) a disparu : il n'y a plus rien à configurer.
+- L'emplacement central Zenith (LONG_TEXT) n'a pas changé.
+
+À FAIRE À LA MAIN après extraction (un zip ne supprime jamais de
+fichiers) — ces 3 fichiers n'ont plus lieu d'être :
+  git rm wear/src/main/kotlin/com/yann/sportscomplication/TeamSidePrefs.kt
+  git rm wear/src/main/kotlin/com/yann/sportscomplication/TeamSideConfigActivity.kt
+  git rm wear/src/main/res/layout/activity_team_side_config.xml

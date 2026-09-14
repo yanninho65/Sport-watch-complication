@@ -35,25 +35,7 @@
             <meta-data
                 android:name="android.support.wearable.complications.UPDATE_PERIOD_SECONDS"
                 android:value="60" />
-            <meta-data
-                android:name="android.support.wearable.complications.PROVIDER_CONFIG_ACTION"
-                android:value="com.yann.sportscomplication.CONFIG_TEAM_SIDE" />
         </service>
-
-        <!--
-             Affiché par le système quand l'utilisateur assigne "Score en
-             direct" à un cercle du Dashboard : choix domicile/extérieur
-             pour CET emplacement précis.
-        -->
-        <activity
-            android:name=".TeamSideConfigActivity"
-            android:exported="true">
-            <intent-filter>
-                <action android:name="com.yann.sportscomplication.CONFIG_TEAM_SIDE" />
-                <category android:name="android.support.wearable.complications.category.PROVIDER_CONFIG" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
 
         <!--
              Reçoit les mises à jour de match envoyées par l'app téléphone

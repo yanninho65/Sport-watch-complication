@@ -19,9 +19,9 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
  *  - LONG_TEXT   : pour l'emplacement central de Zenith
  *                  (ex. "PSG 2-1 OM · 64'")
  *  - SMALL_IMAGE : pour les complications cercle du Dashboard Samsung
- *                  (logo d'équipe en couleur — domicile ou extérieur
- *                  selon la préférence de CET emplacement précis, voir
- *                  TeamSideConfigActivity / TeamSidePrefs)
+ *                  (image composée réunissant les deux logos ET le score,
+ *                  voir ComplicationImageComposer — pas de config à
+ *                  l'assignation, un seul rendu possible)
  *
  * Les données viennent de MatchScoreStore, alimenté par
  * MatchListenerService (Wear Data Layer API). UPDATE_PERIOD_SECONDS=60
@@ -41,7 +41,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
 
         val data: ComplicationData = when (request.complicationType) {
             ComplicationType.LONG_TEXT -> buildLongText(match)
-            ComplicationType.SMALL_IMAGE -> buildSmallImage(match, request.complicationInstanceId)
+            ComplicationType.SMALL_IMAGE -> buildSmallImage(match)
             else -> NoDataComplicationData()
         }
 
@@ -64,7 +64,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
         )
         return when (type) {
             ComplicationType.LONG_TEXT -> buildLongText(preview)
-            ComplicationType.SMALL_IMAGE -> buildSmallImage(preview, complicationInstanceId = -1)
+            ComplicationType.SMALL_IMAGE -> buildSmallImage(preview)
             else -> null
         }
     }
@@ -93,25 +93,21 @@ class ScoreComplicationService : ComplicationDataSourceService() {
         ).build()
     }
 
-    private fun buildSmallImage(match: MatchScore?, complicationInstanceId: Int): ComplicationData {
-        // Chaque cercle du Dashboard retient s'il doit montrer l'équipe à
-        // domicile ou à l'extérieur (choisi via TeamSideConfigActivity au
-        // moment où l'utilisateur assigne ce fournisseur à ce cercle).
-        val side = TeamSidePrefs.getSide(this, complicationInstanceId)
-        val bitmap = if (side == TeamSidePrefs.SIDE_AWAY) match?.awayLogo else match?.homeLogo
+    private fun buildSmallImage(match: MatchScore?): ComplicationData {
+        val icon = Icon.createWithBitmap(ComplicationImageComposer.composeCombined(match))
 
-        val icon = if (bitmap != null) {
-            Icon.createWithBitmap(bitmap)
-        } else {
-            Icon.createWithResource(this, R.drawable.ic_score_complication)
-        }
-
-        val teamName = match?.let { if (side == TeamSidePrefs.SIDE_AWAY) it.awayTeam else it.homeTeam }
-        val description = teamName ?: "Aucun match sélectionné"
+        val description = match?.let {
+            val scoreText = if (it.homeScore != null && it.awayScore != null) {
+                "${it.homeScore}-${it.awayScore}"
+            } else {
+                "vs"
+            }
+            "${it.homeTeam} $scoreText ${it.awayTeam}"
+        } ?: "Aucun match sélectionné"
 
         return SmallImageComplicationData.Builder(
-            // PHOTO plutôt qu'ICON : garantit que la couleur d'origine du
-            // logo n'est jamais teintée par le thème du cadran.
+            // PHOTO plutôt qu'ICON : garantit que les couleurs d'origine
+            // des logos ne sont jamais teintées par le thème du cadran.
             // Contrepartie : pas d'affichage en mode Always-On Display.
             smallImage = SmallImage.Builder(icon, SmallImageType.PHOTO).build(),
             contentDescription = PlainComplicationText.Builder(description).build()
