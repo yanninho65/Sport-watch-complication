@@ -24,21 +24,23 @@ Deux modules dans ce repo :
 
 **Montre (`wear/`)** : `ScoreComplicationService` répond aux quatre types
 de complications. Pour SMALL_IMAGE, `ComplicationImageComposer` compose
-une image rectangulaire large (logo domicile à gauche, score au centre,
-logo extérieur à droite), en couleurs d'origine, sans fond peint — le
-fond sombre de la case hôte suffit, et un contour noir derrière le score
-garantit la lisibilité quel que soit le fond. (Ancienne version : une
-image carrée recadrée en cercle pour le Dashboard Samsung — abandonnée,
-un cercle scale mal dans un rectangle large.)
+une image rectangulaire large (logo domicile, score, logo extérieur,
+tous resserrés près du centre plutôt que près des bords), en couleurs
+d'origine, sans fond peint — le fond sombre de la case hôte suffit, et
+un contour noir derrière le score garantit la lisibilité quel que soit
+le fond. (Deux versions précédentes abandonnées : cercle pour le
+Dashboard Samsung, puis rectangle large avec logos près des bords — le
+logo extérieur disparaissait quand même sur Zenith au recadrage ; voir
+ARBORESCENCE.txt de cette livraison pour le détail.)
 Pour MONOCHROMATIC_IMAGE, `ComplicationImageComposer` compose une image
-rectangulaire large avec le même agencement (logo domicile, score, logo
-extérieur), mais en silhouette blanche uniquement — les logos couleur
-sont recolorés en blanc via leur canal alpha, sans fond peint, pour
-correspondre à la convention monochrome (le système applique ensuite sa
-propre teinte). Pour SHORT_TEXT, `ComplicationImageComposer` compose une
-petite icône carrée avec les deux logos en silhouette côte à côte (sans
-score dedans) ; le score (ex. `2-1`) passe par le champ texte natif du
-SHORT_TEXT, limité à 7 caractères par l'API — largement suffisant.
+rectangulaire large avec le même agencement resserré, mais en silhouette
+blanche uniquement — les logos couleur sont recolorés en blanc via leur
+canal alpha, sans fond peint, pour correspondre à la convention
+monochrome (le système applique ensuite sa propre teinte). Pour
+SHORT_TEXT, `ComplicationImageComposer` compose une petite icône carrée
+avec les deux logos en silhouette côte à côte (sans score dedans) ; le
+score (ex. `2-1`) passe par le champ texte natif du SHORT_TEXT, limité à
+7 caractères par l'API — largement suffisant.
 Aucune config n'est demandée à l'assignation, quel que soit le type : le
 rendu est le même partout. `MatchListenerService` reçoit
 les mises à jour du téléphone (chemin `/match`), décode les deux logos
@@ -125,6 +127,13 @@ que tu l'aies décidé.
   qui demande les données — deux emplacements SMALL_IMAGE différents
   reçoivent forcément la même image. Un seul rendu SMALL_IMAGE est donc
   possible à la fois pour toute l'app (voir "État actuel" ci-dessus).
+- **Recadrage du rectangle large imprévisible** : sans connaître les
+  dimensions réelles de la case sur Zenith, `composeColorWide` /
+  `composeMonochromeWide` resserrent les deux logos près du centre
+  (`WIDE_LOGO_OFFSET_X`) plutôt que près des bords — le score y a
+  toujours survécu à chaque essai jusqu'ici, donc c'est la zone la plus
+  sûre empiriquement, mais rien ne garantit que les deux logos survivent
+  sur toutes les tailles de case.
 
 ## Compiler sans Android Studio
 

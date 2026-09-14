@@ -1,40 +1,43 @@
 Arborescence des fichiers livrés dans ce zip — à extraire à la racine
 du dépôt Sport-watch-complication (écrase les fichiers existants).
-Aucun fichier à supprimer cette fois-ci. AndroidManifest.xml n'est PAS
-concerné par cette livraison (aucun type ne change) : seul le rendu de
-SMALL_IMAGE change.
+Aucun fichier à supprimer. Seul ComplicationImageComposer.kt change
+côté code (ScoreComplicationService.kt et AndroidManifest.xml ne
+bougent pas, aucun type ne change) — mais comme ça touche 2 dossiers
+différents (racine + wear/.../kotlin), on repart quand même en zip
+pour garder l'arborescence claire.
 
-complication-small-image-rectangle.zip
-├── README.md                                                  [modifié]
-├── wear/src/main/kotlin/.../ComplicationImageComposer.kt      [modifié]
-└── wear/src/main/kotlin/.../ScoreComplicationService.kt       [modifié]
+complication-logos-resserres.zip
+├── README.md                                              [modifié]
+└── wear/src/main/kotlin/.../ComplicationImageComposer.kt  [modifié]
 
 Pourquoi ce changement :
-- Le cercle Dashboard Samsung (ancien usage de SMALL_IMAGE) n'est plus
-  utilisé.
-- Assigné à la case de gauche du bandeau Zenith (SMALL_IMAGE), l'ancienne
-  image carrée pensée pour un recadrage circulaire ne s'affichait pas
-  bien dans ce rectangle large : le score apparaissait seul, écrasé au
-  centre, les deux logos disparaissant hors cadre/hors échelle.
-- Android ne transmet pas à l'appli la forme de l'emplacement qui
-  demande l'image : impossible de garder deux rendus SMALL_IMAGE
-  différents (cercle ET rectangle) en même temps. Yann n'utilisant plus
-  le Dashboard, SMALL_IMAGE passe entièrement au rendu rectangle large.
+- Sur Zenith, la case SMALL_IMAGE (gauche) montrait le logo domicile
+  (partiellement visible, ex. l'écusson rond bleu de l'Inter) mais
+  jamais le logo extérieur — alors que le format précédent plaçait
+  justement les deux logos près des BORDS du rectangle large (le plus
+  loin possible du centre). C'est l'inverse de ce qu'il fallait : seul
+  le score, toujours positionné au centre, a survécu à tous les essais
+  jusqu'ici (cercle Dashboard, rectangle bords). Le centre est donc la
+  seule zone dont on sait qu'elle survit au recadrage, quel qu'il soit.
+- Vérifié au passage : le pipeline logo domicile/extérieur (téléphone →
+  montre) traite les deux logos de façon strictement identique, donc ce
+  n'est pas un bug de données — bien un recadrage côté rendu.
 
-Ce que ça change :
-- ComplicationImageComposer.composeColorWide() remplace l'ancien
-  composeCombined() (cercle) : même agencement que le format
-  monochrome large (logo domicile — score — logo extérieur, 480x200),
-  mais en couleurs d'origine des logos, sans fond peint (fond de la
-  case hôte suffit), avec un contour noir derrière le score pour la
-  lisibilité (utile puisque cette version n'est jamais retintée par le
-  système, contrairement à MONOCHROMATIC_IMAGE).
-- ScoreComplicationService.buildSmallImage() appelle composeColorWide()
-  au lieu de composeCombined().
-- README.md mis à jour (description, état actuel, limites connues,
-  étapes de test) — plus aucune mention du Dashboard/cercle.
+Ce que ça change dans ComplicationImageComposer.kt :
+- Canvas plus compact : 300x150 (au lieu de 480x200).
+- Nouvelle constante WIDE_LOGO_OFFSET_X (68px) : distance entre le
+  centre et chaque logo, au lieu d'un espacement depuis les bords
+  (WIDE_LOGO_MARGIN, supprimée). Les deux logos sont donc désormais
+  proches l'un de l'autre, encadrant le score au centre.
+- Taille des logos réduite (84px, contre 150px) et texte du score
+  réduit en conséquence (46px, contre 84px) pour que tout tienne dans
+  cet espace plus resserré.
+- S'applique à composeColorWide (SMALL_IMAGE) ET composeMonochromeWide
+  (MONOCHROMATIC_IMAGE), qui partagent ces constantes.
+- Aucune garantie totale : sans connaître les dimensions exactes de la
+  case Zenith, c'est le meilleur compromis empirique, pas une certitude.
+- README.md mis à jour en conséquence.
 
-À tester sur la montre : réassigne "Score en direct" à la case de
-gauche (SMALL_IMAGE) sur Zenith — elle devrait maintenant montrer les
-deux logos en couleur de part et d'autre du score, sur toute la largeur
-du rectangle, au lieu du score seul écrasé au centre.
+À tester sur la montre : la case SMALL_IMAGE de gauche sur Zenith
+devrait maintenant montrer les DEUX logos, resserrés de part et
+d'autre du score.

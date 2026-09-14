@@ -26,22 +26,32 @@ import android.graphics.RectF
  *    voir ScoreComplicationService — ex. les petits rectangles Zenith).
  *
  * Ancienne version : [composeColorWide] dessinait un cercle plein
- * (Dashboard Samsung, cases circulaires). Abandonné — Yann ne s'en sert
- * plus — au profit du rectangle large, qui correspond à l'usage actuel
- * (petits rectangles Zenith). Un cercle scale mal dans un rectangle large :
- * en aperçu (mode "contain"), il rapetissait au point de rendre les logos
- * illisibles, ne laissant que le texte du score visible au centre.
+ * (Dashboard Samsung, cases circulaires) — abandonné, Yann ne s'en sert
+ * plus. Version suivante : logos plaqués près des bords d'un rectangle
+ * large (480×200) — le logo extérieur disparaissait quand même sur
+ * Zenith (recadrage non centré, dimensions réelles de la case inconnues
+ * de l'appli). Version actuelle : tout resserré près du centre (voir
+ * [WIDE_LOGO_OFFSET_X]) — le score y a toujours survécu à chaque essai,
+ * donc c'est la zone la plus sûre. Pas de garantie totale sans connaître
+ * les dimensions exactes de la case, mais c'est le meilleur compromis
+ * disponible.
  */
 object ComplicationImageComposer {
 
     // Rectangle large partagé par composeColorWide et composeMonochromeWide.
-    private const val WIDE_WIDTH = 480
-    private const val WIDE_HEIGHT = 200
+    // Logos resserrés PRÈS DU CENTRE (et non près des bords comme la
+    // première version) : le centre est la seule zone dont on sait,
+    // empiriquement, qu'elle survit à tous les recadrages observés
+    // (cercle Dashboard, rectangle Zenith) — le score y a toujours été
+    // visible, contrairement aux logos posés loin sur les côtés.
+    private const val WIDE_WIDTH = 300
+    private const val WIDE_HEIGHT = 150
+    private const val WIDE_CENTER_X = WIDE_WIDTH / 2f
     private const val WIDE_CENTER_Y = WIDE_HEIGHT / 2f
-    private const val WIDE_LOGO_SIZE = 150f
-    private const val WIDE_LOGO_MARGIN = 8f
-    private const val WIDE_SCORE_TEXT_SIZE = 84f
-    private const val WIDE_SCORE_STROKE_WIDTH = 6f
+    private const val WIDE_LOGO_SIZE = 84f
+    private const val WIDE_LOGO_OFFSET_X = 68f
+    private const val WIDE_SCORE_TEXT_SIZE = 46f
+    private const val WIDE_SCORE_STROKE_WIDTH = 4f
 
     // Icône carrée pour SHORT_TEXT (ex. les petits rectangles Zenith qui
     // n'acceptent pas MONOCHROMATIC_IMAGE/SMALL_IMAGE) — les deux logos
@@ -65,8 +75,8 @@ object ComplicationImageComposer {
         val canvas = Canvas(bitmap)
 
         val logoHalf = WIDE_LOGO_SIZE / 2f
-        val homeCenterX = logoHalf + WIDE_LOGO_MARGIN
-        val awayCenterX = WIDE_WIDTH - logoHalf - WIDE_LOGO_MARGIN
+        val homeCenterX = WIDE_CENTER_X - WIDE_LOGO_OFFSET_X
+        val awayCenterX = WIDE_CENTER_X + WIDE_LOGO_OFFSET_X
 
         drawColorLogo(canvas, match?.homeLogo, homeCenterX, WIDE_CENTER_Y, logoHalf)
         drawColorLogo(canvas, match?.awayLogo, awayCenterX, WIDE_CENTER_Y, logoHalf)
@@ -88,8 +98,8 @@ object ComplicationImageComposer {
         val canvas = Canvas(bitmap)
 
         val logoHalf = WIDE_LOGO_SIZE / 2f
-        val homeCenterX = logoHalf + WIDE_LOGO_MARGIN
-        val awayCenterX = WIDE_WIDTH - logoHalf - WIDE_LOGO_MARGIN
+        val homeCenterX = WIDE_CENTER_X - WIDE_LOGO_OFFSET_X
+        val awayCenterX = WIDE_CENTER_X + WIDE_LOGO_OFFSET_X
 
         drawMonochromeLogo(canvas, match?.homeLogo, homeCenterX, WIDE_CENTER_Y, logoHalf)
         drawMonochromeLogo(canvas, match?.awayLogo, awayCenterX, WIDE_CENTER_Y, logoHalf)
@@ -179,9 +189,9 @@ object ComplicationImageComposer {
                 strokeWidth = WIDE_SCORE_STROKE_WIDTH
                 color = Color.BLACK
             }
-            canvas.drawText(text, WIDE_WIDTH / 2f, baselineY, strokePaint)
+            canvas.drawText(text, WIDE_CENTER_X, baselineY, strokePaint)
         }
-        canvas.drawText(text, WIDE_WIDTH / 2f, baselineY, fillPaint)
+        canvas.drawText(text, WIDE_CENTER_X, baselineY, fillPaint)
     }
 
     private fun scoreText(match: MatchScore?): String {
