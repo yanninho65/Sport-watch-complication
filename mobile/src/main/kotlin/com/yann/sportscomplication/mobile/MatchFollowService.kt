@@ -22,9 +22,10 @@ import kotlinx.coroutines.launch
 
 /**
  * Service de premier plan (foreground) qui continue d'interroger
- * TheSportsDB toutes les 60 secondes et de renvoyer les mises à jour à
- * la montre MÊME quand l'app téléphone est fermée ou balayée hors des
- * apps récentes.
+ * TheSportsDB (toutes les 60s) ou Live Tennis API (tennis, toutes les
+ * 3 min — voir pollIntervalMillis) selon la source du match suivi, et de
+ * renvoyer les mises à jour à la montre MÊME quand l'app téléphone est
+ * fermée ou balayée hors des apps récentes.
  *
  * Avant ce service, le polling tournait dans une coroutine liée au
  * cycle de vie de MainActivity (lifecycleScope) : il s'arrêtait dès que
@@ -93,9 +94,19 @@ class MatchFollowService : Service() {
 
             var current = initial
             while (isActive && !current.isFinished) {
-                delay(POLL_INTERVAL_MS)
+                delay(pollIntervalMillis(current.source))
                 val updated = try {
-                    SportsDbApi.lookupEvent(current.id)
+                    when (current.source) {
+                        ApiSource.SPORTS_DB -> SportsDbApi.lookupEvent(current.id)
+                        ApiSource.LIVE_TENNIS -> {
+                            // Clé absente/vidée pendant le suivi (Yann l'a
+                            // effacée dans l'app) : on saute ce cycle plutôt
+                            // que de planter, comme une panne réseau —
+                            // TennisApiKeyPrefs.kt.
+                            val apiKey = TennisApiKeyPrefs.get(applicationContext)
+                            if (apiKey == null) null else LiveTennisApi.lookupMatch(current.id, apiKey)
+                        }
+                    }
                 } catch (e: Exception) {
                     null
                 } ?: continue
@@ -112,6 +123,19 @@ class MatchFollowService : Service() {
             // Le match est terminé : plus rien à suivre, on s'arrête proprement.
             stopForegroundAndSelf()
         }
+    }
+
+    /**
+     * Le foot (TheSportsDB) n'a pas de plafond de requêtes par jour, juste
+     * 30/min — 60s de battement est donc sans risque. Le tennis (Live
+     * Tennis API, plan gratuit) plafonne lui à 100 requêtes/JOUR en plus
+     * du 30/min : à 60s, un seul match de 2-3h épuiserait le quota du jour
+     * à lui seul, recherches de joueurs comprises. 3 minutes laisse de la
+     * marge (voir LiveTennisApi.kt et README).
+     */
+    private fun pollIntervalMillis(source: ApiSource): Long = when (source) {
+        ApiSource.SPORTS_DB -> POLL_INTERVAL_MS_FOOTBALL
+        ApiSource.LIVE_TENNIS -> POLL_INTERVAL_MS_TENNIS
     }
 
     private fun stopTracking() {
@@ -171,7 +195,8 @@ class MatchFollowService : Service() {
     }
 
     companion object {
-        private const val POLL_INTERVAL_MS = 60_000L
+        private const val POLL_INTERVAL_MS_FOOTBALL = 60_000L
+        private const val POLL_INTERVAL_MS_TENNIS = 180_000L
         private const val NOTIFICATION_ID = 1
         private const val CHANNEL_ID = "match_follow"
 

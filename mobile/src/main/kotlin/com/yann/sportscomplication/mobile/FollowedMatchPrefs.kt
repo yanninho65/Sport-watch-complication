@@ -16,7 +16,7 @@ object FollowedMatchPrefs {
     fun save(context: Context, match: MatchResult) {
         prefs(context).edit().apply {
             putString("id", match.id)
-            putString("sport", match.sport.name)
+            putString("apiSource", match.source.name)
             putString("idHomeTeam", match.idHomeTeam)
             putString("idAwayTeam", match.idAwayTeam)
             putString("homeTeam", match.homeTeam)
@@ -50,14 +50,14 @@ object FollowedMatchPrefs {
         val id = p.getString("id", null) ?: return null
         val homeTeam = p.getString("homeTeam", null) ?: return null
         val awayTeam = p.getString("awayTeam", null) ?: return null
-        // Repli FOOTBALL : des prefs écrites avant l'introduction du tennis
+        // Repli SPORTS_DB : des prefs écrites avant l'introduction du tennis
         // n'ont pas cette clé.
-        val sport = p.getString("sport", null)?.let { name ->
-            Sport.values().firstOrNull { it.name == name }
-        } ?: Sport.FOOTBALL
+        val source = p.getString("apiSource", null)?.let { name ->
+            ApiSource.values().firstOrNull { it.name == name }
+        } ?: ApiSource.SPORTS_DB
         return MatchResult(
             id = id,
-            sport = sport,
+            source = source,
             idHomeTeam = p.getString("idHomeTeam", null),
             idAwayTeam = p.getString("idAwayTeam", null),
             homeTeam = homeTeam,

@@ -45,7 +45,117 @@
 
     </LinearLayout>
 
-    <!-- Choix du mode de recherche : équipe (comportement historique), joueur ou ligue. -->
+    <!--
+         Question 1 : quelle API interroger — TheSportsDB (multi-sport) ou
+         Live Tennis API (tennis uniquement). Voir MainActivity.ApiMode et
+         LiveTennisApi.kt. Le volley n'a pas été retenu comme 3e option :
+         couverture jugée trop limitée côté API gratuites (voir README).
+    -->
+    <RadioGroup
+        android:id="@+id/radioApi"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp">
+
+        <RadioButton
+            android:id="@+id/radioApiSportsDb"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="TheSportsDB"
+            android:checked="true" />
+
+        <RadioButton
+            android:id="@+id/radioApiTennis"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Live Tennis API" />
+
+    </RadioGroup>
+
+    <!--
+         Question 2 (TheSportsDB uniquement, masqué en tennis où le sport
+         "Tennis" est implicite) : quel sport, PARMI ceux couverts par
+         TheSportsDB — sert à filtrer les recherches équipe/joueur/ligue
+         côté client (voir SportsDbApi.kt, champ strSport). Avec la clé
+         gratuite, en pratique seul Football renvoie des résultats fiables
+         (voir "Limites connues" du README) — les autres sports restent
+         proposés mais peuvent renvoyer 0 résultat.
+    -->
+    <RadioGroup
+        android:id="@+id/radioSportsDbSport"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_marginBottom="8dp">
+
+        <RadioButton
+            android:id="@+id/radioSdbSoccer"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Football"
+            android:checked="true" />
+
+        <RadioButton
+            android:id="@+id/radioSdbBasketball"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Basketball" />
+
+        <RadioButton
+            android:id="@+id/radioSdbBaseball"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Baseball" />
+
+        <RadioButton
+            android:id="@+id/radioSdbIceHockey"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Hockey sur glace" />
+
+        <RadioButton
+            android:id="@+id/radioSdbAmFootball"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Football US" />
+
+    </RadioGroup>
+
+    <!--
+         Clé Live Tennis API — visible uniquement en mode "Live Tennis
+         API" (voir MainActivity.showSearchState). Saisie ICI et stockée
+         en local (TennisApiKeyPrefs.kt), JAMAIS dans le code source :
+         le dépôt GitHub est public.
+    -->
+    <LinearLayout
+        android:id="@+id/tennisApiKeyRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginBottom="8dp"
+        android:visibility="gone">
+
+        <EditText
+            android:id="@+id/editTennisApiKey"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="Clé Live Tennis API"
+            android:inputType="textPassword"
+            android:singleLine="true" />
+
+        <Button
+            android:id="@+id/buttonSaveTennisApiKey"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Enregistrer la clé" />
+
+    </LinearLayout>
+
+    <!-- Choix du mode de recherche : équipe (comportement historique), joueur ou ligue — pour TheSportsDB uniquement. Masqué en tennis (recherche par joueur uniquement) — voir MainActivity.showSearchState. -->
     <RadioGroup
         android:id="@+id/radioSearchMode"
         android:layout_width="match_parent"

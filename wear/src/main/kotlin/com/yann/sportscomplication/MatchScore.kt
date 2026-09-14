@@ -5,10 +5,12 @@ import android.graphics.Bitmap
 /**
  * Représente l'état d'un match tel qu'affiché par la complication.
  *
- * [sport] est la valeur brute envoyée par le téléphone ("FOOTBALL" ou
- * "TENNIS", voir l'enum Sport dans mobile/Models.kt) — MatchClock.kt s'en sert pour
- * savoir quel vocabulaire de statut interpréter et comment construire le
- * libellé (un set en tennis n'a pas d'équivalent en football).
+ * [apiSource] est la valeur brute envoyée par le téléphone ("SPORTS_DB"
+ * ou "LIVE_TENNIS", voir l'enum ApiSource dans mobile/Models.kt) —
+ * MatchClock.kt s'en sert pour savoir quel vocabulaire de statut
+ * interpréter et comment construire le libellé (un set en tennis n'a
+ * pas d'équivalent en football). Ne dit pas quel sport précis a été
+ * cherché côté TheSportsDB (foot, basket, baseball...).
  *
  * [homeScore] et [awayScore] sont nullables car un match pas encore
  * commencé n'a pas de score. En tennis, ils portent le nombre de SETS
@@ -43,7 +45,7 @@ data class MatchScore(
     val kickoffEpochMillis: Long?,
     val homeLogo: Bitmap?,
     val awayLogo: Bitmap?,
-    val sport: String = "FOOTBALL"
+    val apiSource: String = "SPORTS_DB"
 )
 
 /**

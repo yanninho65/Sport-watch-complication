@@ -7,10 +7,10 @@ import java.util.Locale
 /**
  * Traduit le statut brut renvoyé par l'API du sport concerné en un
  * libellé court pour la complication — SANS calculer de minute de jeu
- * par déduction. Deux vocabulaires possibles selon `match.sport` : celui
- * de TheSportsDB pour le foot (branche par défaut, `label`) et celui de
- * Live Tennis API pour le tennis (`tennisLabel`), qui inclut en plus le
- * score du set en cours quand il est connu (`liveSetLabel`).
+ * par déduction. Deux vocabulaires possibles selon `match.apiSource` :
+ * celui de TheSportsDB pour le foot (branche par défaut, `label`) et
+ * celui de Live Tennis API pour le tennis (`tennisLabel`), qui inclut en
+ * plus le score du set en cours quand il est connu (`liveSetLabel`).
  *
  * Pourquoi pas de minute chiffrée en football : le plan gratuit de
  * TheSportsDB ne fournit une minute de jeu en direct (champ
@@ -39,7 +39,7 @@ object MatchClock {
     private val kickoffTimeFormat = SimpleDateFormat("HH:mm", Locale.FRANCE)
 
     fun label(match: MatchScore): String {
-        if (match.sport.equals("TENNIS", ignoreCase = true)) return tennisLabel(match)
+        if (match.apiSource.equals("LIVE_TENNIS", ignoreCase = true)) return tennisLabel(match)
 
         val status = match.status.trim()
 

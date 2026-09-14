@@ -32,21 +32,33 @@ object SportsDbApi {
     private const val API_KEY = "3"
     private const val BASE_URL = "https://www.thesportsdb.com/api/v1/json/$API_KEY"
 
-    suspend fun searchTeams(query: String): List<TeamResult> = withContext(Dispatchers.IO) {
+    /**
+     * [sport] filtre les résultats sur le champ `strSport` renvoyé par
+     * l'API (ex. "Soccer", "Basketball", "Baseball", "Ice Hockey",
+     * "American Football" — voir MainActivity.SportsDbSport). Filtrage
+     * CÔTÉ CLIENT : searchteams.php n'a pas de paramètre de sport natif,
+     * contrairement à eventsday.php (`s=`). Avec la clé gratuite, en
+     * pratique la plupart des sports autres que le foot renvoient 0
+     * résultat ici (voir "Limites connues" du README) — ce filtre
+     * n'invente rien, il se contente d'écarter les faux positifs d'un
+     * autre sport quand il y en a.
+     */
+    suspend fun searchTeams(query: String, sport: String): List<TeamResult> = withContext(Dispatchers.IO) {
         val encoded = URLEncoder.encode(query, "UTF-8")
         val json = fetchJson("$BASE_URL/searchteams.php?t=$encoded")
         val teams = json.optJSONArray("teams") ?: return@withContext emptyList()
 
         (0 until teams.length()).mapNotNull { i ->
             val team = teams.optJSONObject(i) ?: return@mapNotNull null
+            if (!team.optString("strSport", "").equals(sport, ignoreCase = true)) return@mapNotNull null
             val id = nullableString(team, "idTeam") ?: return@mapNotNull null
             val name = nullableString(team, "strTeam") ?: return@mapNotNull null
             TeamResult(id = id, name = name)
         }
     }
 
-    /** Recherche de joueurs par nom — chaque résultat porte son équipe actuelle (idTeam/strTeam), si connue. */
-    suspend fun searchPlayers(query: String): List<PlayerResult> = withContext(Dispatchers.IO) {
+    /** Recherche de joueurs par nom, filtrée par sport (voir searchTeams) — chaque résultat porte son équipe actuelle (idTeam/strTeam), si connue. */
+    suspend fun searchPlayers(query: String, sport: String): List<PlayerResult> = withContext(Dispatchers.IO) {
         val encoded = URLEncoder.encode(query, "UTF-8")
         val json = fetchJson("$BASE_URL/searchplayers.php?p=$encoded")
         // Particularité de cet endpoint : la racine JSON s'appelle "player"
@@ -56,6 +68,7 @@ object SportsDbApi {
 
         (0 until players.length()).mapNotNull { i ->
             val p = players.optJSONObject(i) ?: return@mapNotNull null
+            if (!p.optString("strSport", "").equals(sport, ignoreCase = true)) return@mapNotNull null
             val id = nullableString(p, "idPlayer") ?: return@mapNotNull null
             val name = nullableString(p, "strPlayer") ?: return@mapNotNull null
             PlayerResult(
@@ -68,23 +81,27 @@ object SportsDbApi {
     }
 
     /**
-     * Recherche de ligues par nom. Il n'existe pas d'endpoint v1 de
-     * recherche textuelle pour les ligues (contrairement aux équipes et
-     * joueurs) — on récupère donc la liste complète via all_leagues.php
-     * et on filtre côté client sur le nom. Avec la clé gratuite, cette
-     * liste ne contient qu'une dizaine de grandes ligues de football
-     * (voir note de classe ci-dessus).
+     * Recherche de ligues par nom ET par sport (voir searchTeams pour le
+     * principe du filtre). Il n'existe pas d'endpoint v1 de recherche
+     * textuelle pour les ligues (contrairement aux équipes et joueurs) —
+     * on récupère donc la liste complète via all_leagues.php et on
+     * filtre côté client sur le nom ET le sport. Avec la clé gratuite,
+     * cette liste ne contient qu'une dizaine de grandes ligues de
+     * football (voir note de classe ci-dessus) — choisir un autre sport
+     * que Football renverra donc très probablement 0 résultat ici.
      */
-    suspend fun searchLeagues(query: String): List<LeagueResult> = withContext(Dispatchers.IO) {
+    suspend fun searchLeagues(query: String, sport: String): List<LeagueResult> = withContext(Dispatchers.IO) {
         val json = fetchJson("$BASE_URL/all_leagues.php")
         val leagues = json.optJSONArray("leagues") ?: return@withContext emptyList()
 
         (0 until leagues.length()).mapNotNull { i ->
             val l = leagues.optJSONObject(i) ?: return@mapNotNull null
+            val leagueSport = l.optString("strSport", "")
+            if (!leagueSport.equals(sport, ignoreCase = true)) return@mapNotNull null
             val id = nullableString(l, "idLeague") ?: return@mapNotNull null
             val name = nullableString(l, "strLeague") ?: return@mapNotNull null
             if (!name.contains(query, ignoreCase = true)) return@mapNotNull null
-            LeagueResult(id = id, name = name, sport = l.optString("strSport", ""))
+            LeagueResult(id = id, name = name, sport = leagueSport)
         }
     }
 

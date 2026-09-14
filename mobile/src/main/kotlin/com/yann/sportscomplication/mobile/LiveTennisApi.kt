@@ -12,25 +12,29 @@ import java.util.TimeZone
 
 /**
  * Client minimal pour Live Tennis API (https://livetennisapi.com),
- * utilisé uniquement quand le sport "Tennis" est sélectionné dans l'app
- * (voir MainActivity.SportMode) — TheSportsDB (SportsDbApi.kt) reste
- * utilisé pour le foot, inchangé.
+ * utilisé uniquement quand "Live Tennis API" est sélectionné dans l'app
+ * (voir MainActivity.ApiMode) — TheSportsDB (SportsDbApi.kt) reste
+ * utilisé pour les autres sports, inchangé.
  *
- * CLÉ API REQUISE : contrairement à TheSportsDB (clé de test publique
- * partagée "3"), cette API exige une clé personnelle — gratuite, mais
- * nominative et à récupérer soi-même. Inscription sur
+ * CLÉ API REQUISE, SAISIE DANS L'APP — PAS DANS CE FICHIER : le dépôt
+ * GitHub est PUBLIC, donc aucune clé n'est codée en dur ici
+ * (contrairement à TheSportsDB, dont "3" est une clé de TEST publique
+ * documentée, faite pour être partagée). Chaque fonction ci-dessous
+ * reçoit sa clé en paramètre ([apiKey]), lue par l'appelant
+ * (MainActivity, MatchFollowService) dans TennisApiKeyPrefs
+ * (SharedPreferences locales, remplies via le champ qui apparaît sur
+ * l'écran principal une fois "Live Tennis API" sélectionné — voir
+ * TennisApiKeyPrefs.kt). Inscription gratuite sur
  * https://livetennisapi.com/subscribe/free (email uniquement, aucune
- * carte bancaire demandée), clé affichée immédiatement sur
- * https://livetennisapi.com/account. Remplace [API_KEY] ci-dessous par
- * la tienne avant de builder — tel quel, tous les appels échoueront
- * (401) et l'app affichera juste "Aucun joueur trouvé".
+ * carte bancaire), clé affichée immédiatement sur
+ * https://livetennisapi.com/account.
  *
  * PLAN GRATUIT — LIMITE IMPORTANTE, différente de TheSportsDB : 30
  * requêtes/minute **ET seulement 100/jour** (TheSportsDB free n'a pas de
  * plafond journalier, juste 30/min). C'est pourquoi MatchFollowService
  * interroge cette API toutes les 3 minutes pour le tennis au lieu de
- * toutes les 60 secondes comme pour le foot : à 60s, un seul match de
- * 2-3h épuiserait à lui seul le quota du jour, recherches comprises.
+ * toutes les 60 secondes comme pour TheSportsDB : à 60s, un seul match
+ * de 2-3h épuiserait à lui seul le quota du jour, recherches comprises.
  * Voir https://docs.livetennisapi.com pour la référence complète.
  *
  * Endpoints utilisés, tous FREE :
@@ -40,14 +44,12 @@ import java.util.TimeZone
  */
 object LiveTennisApi {
 
-    // TODO Yann : remplace par ta clé gratuite (https://livetennisapi.com/subscribe/free)
-    private const val API_KEY = "REMPLACE_MOI_PAR_TA_CLE_GRATUITE"
     private const val BASE_URL = "https://api.livetennisapi.com/api/public/v1"
 
     /** Recherche de joueurs par nom (ATP/WTA/Challenger/ITF confondus). */
-    suspend fun searchPlayers(query: String): List<TennisPlayerResult> = withContext(Dispatchers.IO) {
+    suspend fun searchPlayers(query: String, apiKey: String): List<TennisPlayerResult> = withContext(Dispatchers.IO) {
         val encoded = URLEncoder.encode(query, "UTF-8")
-        val json = fetchJson("$BASE_URL/players?search=$encoded")
+        val json = fetchJson("$BASE_URL/players?search=$encoded", apiKey)
         val players = json.optJSONArray("data") ?: return@withContext emptyList()
 
         (0 until players.length()).mapNotNull { i ->
@@ -68,16 +70,16 @@ object LiveTennisApi {
      * Filtré côté serveur (from/to) plutôt que côté client (contrairement à
      * SportsDbApi.getMatchesForTeam) pour économiser le quota journalier.
      */
-    suspend fun getMatchesForPlayerToday(playerId: Int): List<MatchResult> = withContext(Dispatchers.IO) {
+    suspend fun getMatchesForPlayerToday(playerId: Int, apiKey: String): List<MatchResult> = withContext(Dispatchers.IO) {
         val today = todayUtcDateString()
-        val live = fetchMatches("$BASE_URL/matches?status=live&player=$playerId")
-        val upcoming = fetchMatches("$BASE_URL/matches?status=upcoming&player=$playerId&from=$today&to=$today")
+        val live = fetchMatches("$BASE_URL/matches?status=live&player=$playerId", apiKey)
+        val upcoming = fetchMatches("$BASE_URL/matches?status=upcoming&player=$playerId&from=$today&to=$today", apiKey)
         live + upcoming
     }
 
     /** Relit un match précis par son id — utilisé pour le polling périodique (voir MatchFollowService). */
-    suspend fun lookupMatch(matchId: String): MatchResult? = withContext(Dispatchers.IO) {
-        val json = fetchJson("$BASE_URL/matches/$matchId")
+    suspend fun lookupMatch(matchId: String, apiKey: String): MatchResult? = withContext(Dispatchers.IO) {
+        val json = fetchJson("$BASE_URL/matches/$matchId", apiKey)
         if (!json.has("id")) return@withContext null
         parseMatch(json)
     }
@@ -87,8 +89,8 @@ object LiveTennisApi {
             timeZone = TimeZone.getTimeZone("UTC")
         }.format(java.util.Date())
 
-    private fun fetchMatches(url: String): List<MatchResult> {
-        val json = fetchJson(url)
+    private fun fetchMatches(url: String, apiKey: String): List<MatchResult> {
+        val json = fetchJson(url, apiKey)
         val matches = json.optJSONArray("data") ?: return emptyList()
         return (0 until matches.length()).mapNotNull { i ->
             matches.optJSONObject(i)?.let { parseMatch(it) }
@@ -135,7 +137,7 @@ object LiveTennisApi {
 
         return MatchResult(
             id = id,
-            sport = Sport.TENNIS,
+            source = ApiSource.LIVE_TENNIS,
             idHomeTeam = null,
             idAwayTeam = null,
             homeTeam = homeTeam,
@@ -177,14 +179,14 @@ object LiveTennisApi {
     }
 
     /** Authentification par en-tête (voir doc) plutôt que par ?token=, pour ne pas laisser la clé traîner dans des logs d'URL. */
-    private fun fetchJson(urlString: String): JSONObject {
+    private fun fetchJson(urlString: String, apiKey: String): JSONObject {
         var connection: HttpURLConnection? = null
         return try {
             connection = URL(urlString).openConnection() as HttpURLConnection
             connection.requestMethod = "GET"
             connection.connectTimeout = 10_000
             connection.readTimeout = 10_000
-            connection.setRequestProperty("X-API-Key", API_KEY)
+            connection.setRequestProperty("X-API-Key", apiKey)
             val code = connection.responseCode
             if (code !in 200..299) return JSONObject()
             val body = connection.inputStream.bufferedReader().use { it.readText() }

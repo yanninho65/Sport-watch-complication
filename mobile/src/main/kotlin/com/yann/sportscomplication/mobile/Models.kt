@@ -4,12 +4,13 @@ import android.content.Intent
 import android.os.Bundle
 
 /**
- * Sport suivi par un [MatchResult] — conditionne quelle API interroger
- * pour le rafraîchir (voir MainActivity.SportMode, LiveTennisApi.kt et
- * MatchFollowService.pollIntervalMillis). Le volley n'a pas été retenu :
- * couverture jugée trop limitée côté API gratuites (voir README).
+ * Quelle API interroger pour rafraîchir un [MatchResult] (voir
+ * MainActivity.ApiMode, LiveTennisApi.kt et
+ * MatchFollowService.pollIntervalMillis). Ne dit PAS quel sport précis
+ * a été cherché — TheSportsDB couvre plusieurs sports (foot, basket,
+ * baseball... voir MainActivity.SportsDbSport) sous ce même SPORTS_DB.
  */
-enum class Sport { FOOTBALL, TENNIS }
+enum class ApiSource { SPORTS_DB, LIVE_TENNIS }
 
 data class TeamResult(
     val id: String,
@@ -42,8 +43,8 @@ data class LeagueResult(
 
 data class MatchResult(
     val id: String,
-    /** FOOTBALL par défaut pour rester compatible avec le code existant (TheSportsDB) — voir [Sport]. */
-    val sport: Sport = Sport.FOOTBALL,
+    /** SPORTS_DB par défaut pour rester compatible avec le code existant — voir [ApiSource]. */
+    val source: ApiSource = ApiSource.SPORTS_DB,
     val idHomeTeam: String?,
     val idAwayTeam: String?,
     val homeTeam: String,
@@ -83,7 +84,7 @@ data class MatchResult(
      * Un match dans cet état n'a plus besoin d'être suivi (arrêt du polling).
      * "completed" couvre le statut brut de Live Tennis API (tennis) ;
      * "Cancelled" couvre déjà celui de TheSportsDB ET de Live Tennis API,
-     * qui utilisent tous deux ce mot (voir Sport, LiveTennisApi.kt).
+     * qui utilisent tous deux ce mot (voir ApiSource, LiveTennisApi.kt).
      */
     val isFinished: Boolean
         get() = status.contains("Finished", ignoreCase = true) ||
@@ -99,7 +100,7 @@ data class MatchResult(
 // ci-dessous). Un Service n'a pas accès au MatchResult que possédait
 // l'Activity qui l'a lancé — il faut le lui transmettre explicitement.
 private const val EXTRA_ID = "com.yann.sportscomplication.mobile.extra.ID"
-private const val EXTRA_SPORT = "com.yann.sportscomplication.mobile.extra.SPORT"
+private const val EXTRA_API_SOURCE = "com.yann.sportscomplication.mobile.extra.API_SOURCE"
 private const val EXTRA_ID_HOME_TEAM = "com.yann.sportscomplication.mobile.extra.ID_HOME_TEAM"
 private const val EXTRA_ID_AWAY_TEAM = "com.yann.sportscomplication.mobile.extra.ID_AWAY_TEAM"
 private const val EXTRA_HOME_TEAM = "com.yann.sportscomplication.mobile.extra.HOME_TEAM"
@@ -117,7 +118,7 @@ private const val EXTRA_KICKOFF = "com.yann.sportscomplication.mobile.extra.KICK
 /** Sérialise ce match dans un Bundle, pour le transmettre à MatchFollowService via un Intent. */
 fun MatchResult.toExtras(): Bundle = Bundle().apply {
     putString(EXTRA_ID, id)
-    putString(EXTRA_SPORT, sport.name)
+    putString(EXTRA_API_SOURCE, source.name)
     putString(EXTRA_ID_HOME_TEAM, idHomeTeam)
     putString(EXTRA_ID_AWAY_TEAM, idAwayTeam)
     putString(EXTRA_HOME_TEAM, homeTeam)
@@ -138,15 +139,15 @@ fun Intent.toMatchResult(): MatchResult? {
     val id = getStringExtra(EXTRA_ID) ?: return null
     val homeTeam = getStringExtra(EXTRA_HOME_TEAM) ?: return null
     val awayTeam = getStringExtra(EXTRA_AWAY_TEAM) ?: return null
-    // Repli FOOTBALL : un Bundle écrit avant l'introduction du tennis
+    // Repli SPORTS_DB : un Bundle écrit avant l'introduction du tennis
     // (ex. FollowedMatchPrefs déjà en place sur le téléphone de Yann)
     // n'a pas cette clé — on ne veut pas planter dessus.
-    val sport = getStringExtra(EXTRA_SPORT)?.let { name ->
-        Sport.values().firstOrNull { it.name == name }
-    } ?: Sport.FOOTBALL
+    val source = getStringExtra(EXTRA_API_SOURCE)?.let { name ->
+        ApiSource.values().firstOrNull { it.name == name }
+    } ?: ApiSource.SPORTS_DB
     return MatchResult(
         id = id,
-        sport = sport,
+        source = source,
         idHomeTeam = getStringExtra(EXTRA_ID_HOME_TEAM),
         idAwayTeam = getStringExtra(EXTRA_ID_AWAY_TEAM),
         homeTeam = homeTeam,

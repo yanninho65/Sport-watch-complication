@@ -1,65 +1,90 @@
 Arborescence des fichiers livrés dans ce zip — à extraire à la racine
 du dépôt Sport-watch-complication (écrase les fichiers existants).
-Aucun fichier à supprimer, aucun fichier nouveau — uniquement des
-modifications de fichiers existants. Ça touche 3 dossiers différents
-(racine, mobile/.../kotlin, wear/.../kotlin), donc zip pour garder
-l'arborescence claire, comme pour la livraison précédente
-(choix-sport-tennis.zip).
+Aucun fichier à supprimer.
 
-score-set-en-cours-montre.zip
-├── README.md                                                [modifié]
-├── mobile/src/main/kotlin/.../mobile/
-│   ├── Models.kt                                            [modifié]
-│   ├── FollowedMatchPrefs.kt                                [modifié]
-│   ├── LiveTennisApi.kt                                     [modifié]
-│   └── WatchSync.kt                                         [modifié]
+ZIP CUMULATIF : comme demandé, tant que tu n'as pas chargé sur GitHub,
+chaque nouvelle livraison reprend TOUS les fichiers nouveaux ou modifiés
+depuis ta dernière indication de chargement — pas seulement ceux touchés
+dans ce dernier échange. Ce zip remplace donc entièrement
+choix-sport-tennis.zip ET score-set-en-cours-montre.zip : tu n'as besoin
+que de celui-ci. Dis-moi quand tu as poussé sur GitHub pour que je
+reparte d'un compteur à zéro.
+
+sport-watch-complication-cumulatif.zip
+├── README.md                                                          [modifié]
+├── mobile/src/main/
+│   ├── kotlin/.../mobile/
+│   │   ├── Models.kt                                                  [modifié]
+│   │   ├── MainActivity.kt                                            [modifié]
+│   │   ├── MatchFollowService.kt                                      [modifié]
+│   │   ├── FollowedMatchPrefs.kt                                      [modifié]
+│   │   ├── WatchSync.kt                                               [modifié]
+│   │   ├── SportsDbApi.kt                                             [modifié]
+│   │   ├── LiveTennisApi.kt                                           [nouveau, puis modifié]
+│   │   └── TennisApiKeyPrefs.kt                                       [nouveau]
+│   └── res/layout/activity_main.xml                                   [modifié]
 └── wear/src/main/kotlin/.../
-    ├── MatchScore.kt                                        [modifié]
-    ├── MatchListenerService.kt                              [modifié]
-    ├── MatchClock.kt                                        [modifié]
-    └── ScoreComplicationService.kt                          [modifié — commentaire seulement]
+    ├── MatchScore.kt                                                  [modifié]
+    ├── MatchListenerService.kt                                        [modifié]
+    ├── MatchClock.kt                                                  [modifié]
+    └── ScoreComplicationService.kt                                    [modifié — commentaires]
 
-Ce que ça change (suite de choix-sport-tennis.zip) :
-- Le score de JEUX du set en cours (tennis) arrive maintenant jusqu'à
-  la montre. MatchResult (mobile) porte deux nouveaux champs optionnels
-  `currentSetHomeGames`/`currentSetAwayGames`, remplis par
-  LiveTennisApi.parseMatch à partir du dernier élément de chaque liste
-  de `score.games` (l'API renvoie les jeux gagnés PAR SET ; le dernier
-  élément est donc le set en cours). Nuls en football, nuls en tennis
-  tant qu'aucun set n'a commencé.
-- WatchSync relaie ces deux champs (+ le sport) à la montre via la Data
-  Layer API (nouvelles clés `currentSetHomeGames`/`currentSetAwayGames`/
-  `sport` dans la DataMap).
-- Côté montre : MatchScore porte les mêmes champs + `sport` (chaîne
-  brute "FOOTBALL"/"TENNIS"). MatchListenerService les lit depuis la
-  DataMap. MatchClock.kt sait maintenant traduire DEUX vocabulaires de
-  statut selon `match.sport` : celui de TheSportsDB pour le foot
-  (inchangé), et un nouveau pour Live Tennis API
-  ("upcoming"/"live"/"completed"/"cancelled") — la fonction `liveSetLabel`
-  compose le libellé de set à partir du score de jeux reçu.
-- Résultat visible sur le LONG_TEXT (emplacement central Zenith) pour un
-  match de tennis en direct : "Alcaraz 2-1 Sinner · 3e set 4-3" au lieu
-  de "Alcaraz 2-1 Sinner · live" (le statut brut affiché tel quel avant
-  ce changement).
-- FollowedMatchPrefs (téléphone) persiste/restaure aussi ces deux
-  champs, pour que la carte "match suivi" survive à une fermeture de
-  l'app.
+RÉCAPITULATIF DE TOUT CE QUI A CHANGÉ DEPUIS LE DÉBUT (3 échanges) :
 
-Ce qui reste un TODO séparé (voir README, section "Choix du sport et
-intégration tennis") :
-- Le score du JEU en cours (`points`, ex. "30-15") n'est pas relayé —
-  l'API le fournit déjà dans le même appel, rien ne l'empêche techniquement,
-  juste pas fait ici.
-- Les rendus compacts (SMALL_IMAGE / MONOCHROMATIC_IMAGE / SHORT_TEXT)
-  n'affichent toujours que le score de sets, pas le set en cours.
+1) Sélecteur de sport puis, maintenant, sélecteur d'API :
+   - L'app demande D'ABORD quelle API interroger (`radioApi` :
+     TheSportsDB ou Live Tennis API), PUIS quel sport (`radioSportsDbSport`,
+     TheSportsDB uniquement — Football/Basketball/Baseball/Hockey sur
+     glace/Football US ; le tennis est implicite côté Live Tennis API).
+   - Le sport choisi filtre désormais les recherches équipe/joueur/ligue
+     de TheSportsDB CÔTÉ CLIENT, sur le champ `strSport` de l'API — pas
+     un paramètre d'URL (searchteams.php/searchplayers.php n'en ont pas).
+     Avec la clé gratuite, en pratique seul Football renvoie des
+     résultats fiables pour les ligues (limite déjà documentée) ; les
+     autres sports restent proposés mais peuvent renvoyer 0 résultat.
+   - Renommage interne : l'enum qui portait FOOTBALL/TENNIS s'appelle
+     maintenant `ApiSource` (SPORTS_DB/LIVE_TENNIS) — son vrai rôle
+     étant de dire quelle API réinterroger pour le polling, pas quel
+     sport précis a été cherché (TheSportsDB couvrant plusieurs sports
+     maintenant). Répercuté partout : MatchResult.source,
+     FollowedMatchPrefs, WatchSync, MatchFollowService, et côté montre
+     MatchScore.apiSource / MatchListenerService / MatchClock.
 
-Pas de nouvelle clé API ni de nouvelle dépendance : ce zip s'applique
-par-dessus choix-sport-tennis.zip (déjà livré) sans rien y changer côté
-sélecteur de sport ou recherche.
+2) Clé Live Tennis API : SAISIE DANS L'APP, plus dans le code.
+   Comme le dépôt GitHub est public, la clé ne peut plus être en dur
+   dans LiveTennisApi.kt (ce qu'elle était depuis la 1ère livraison, en
+   valeur "placeholder" à remplacer avant de builder — ce n'est plus le
+   cas). Un champ + bouton "Enregistrer la clé" apparaît sur l'écran
+   principal une fois "Live Tennis API" sélectionné ; la clé est stockée
+   en SharedPreferences locales (TennisApiKeyPrefs.kt, nouveau fichier),
+   jamais commitée. Toutes les fonctions de LiveTennisApi.kt reçoivent
+   désormais leur clé en paramètre plutôt que de lire une constante.
+   Sans clé enregistrée, une recherche tennis affiche directement
+   "Renseigne ta clé Live Tennis API ci-dessus" sans appeler l'API pour
+   rien ; si la clé est vidée pendant qu'un match est suivi, le
+   rafraîchissement périodique échoue silencieusement (comme une panne
+   réseau) au lieu de planter.
+   Pas de chiffrement (SharedPreferences classiques) — suffisant pour
+   l'objectif (ne plus exposer la clé dans le code public), mais pas à
+   l'épreuve d'un téléphone rooté. Détaillé dans le README si tu veux
+   aller plus loin plus tard (EncryptedSharedPreferences).
 
-À tester sur la montre : suivre un match de tennis en direct doit faire
-apparaître, dans l'emplacement central LONG_TEXT du visage Zenith, le
-numéro et le score du set en cours après le score de sets (ex.
-"3e set 4-3"). Si le score de jeux n'est pas encore connu au moment du
-premier envoi, "En direct" s'affiche à la place le temps du prochain
-rafraîchissement (jusqu'à 3 minutes, voir MatchFollowService).
+3) (Rappel de la livraison précédente, inchangé ici) Le score du set en
+   cours en tennis remonte jusqu'à la montre : LONG_TEXT affiche par ex.
+   "Alcaraz 2-1 Sinner · 3e set 4-3" pour un match en direct.
+
+À FAIRE avant de builder :
+- Ouvrir l'app, sélectionner "Live Tennis API", coller ta clé gratuite
+  (inscription sur https://livetennisapi.com/subscribe/free) dans le
+  champ qui apparaît, puis "Enregistrer la clé". Plus besoin de toucher
+  au code pour ça.
+
+À tester :
+- Basculer "TheSportsDB" ↔ "Live Tennis API" doit faire apparaître/
+  disparaître le sélecteur de sport TheSportsDB, le champ de clé tennis
+  et le sélecteur équipe/joueur/ligue, dans le bon sens.
+- Choisir un sport autre que Football sous TheSportsDB puis chercher une
+  équipe : la recherche peut renvoyer 0 résultat avec la clé gratuite,
+  c'est attendu (voir README) — pas un bug.
+- Chercher un joueur de tennis SANS avoir enregistré de clé doit afficher
+  le message d'invite, pas planter ni appeler l'API.
