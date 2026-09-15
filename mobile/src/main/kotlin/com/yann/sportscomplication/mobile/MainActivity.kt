@@ -247,7 +247,7 @@ class MainActivity : AppCompatActivity() {
             when (item) {
                 is SofascorePickerItem.Latest -> SofascorePrefs.saveLatest(this)
                 is SofascorePickerItem.Match -> SofascorePrefs.saveChosen(
-                    this, item.option.groupKey, "${item.option.homeTeam} - ${item.option.awayTeam}"
+                    this, item.option.key, "${item.option.homeTeam} - ${item.option.awayTeam}"
                 )
             }
             SofascoreNotificationListenerService.refreshIfConnected()

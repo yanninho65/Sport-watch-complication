@@ -5,14 +5,14 @@ import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
 
 /**
- * Un groupe de notifications Sofascore actif = un match ("un groupe de
- * notifications correspond à un match", Yann) — [groupKey] est la clé
- * système ([StatusBarNotification.getGroupKey]) qui les relie, stable tant
- * que le groupe reste actif. [latestLine] est la ligne la plus récente,
- * pour donner un aperçu dans le sélecteur (MainActivity).
+ * Une notification Sofascore active = un match. [key] est
+ * [StatusBarNotification.getKey], stable tant que la notif reste active (une
+ * mise à jour en place — même id/tag — garde la même clé). [latestLine] est
+ * la ligne la plus récente, pour donner un aperçu dans le sélecteur
+ * (MainActivity).
  */
 data class SofascoreMatchOption(
-    val groupKey: String,
+    val key: String,
     val homeTeam: String,
     val awayTeam: String,
     val latestLine: String
@@ -27,12 +27,12 @@ data class SofascoreMatchOption(
  * MainActivity/MatchFollowService qui priment sinon).
  *
  * Deux modes, choisis par Yann dans l'app et persistés dans [SofascorePrefs] :
- * - LATEST (par défaut) : le groupe le plus récemment mis à jour parmi
+ * - LATEST (par défaut) : la notif la plus récemment mise à jour parmi
  *   toutes les notifs Sofascore actives.
  * - CHOSEN : un match précis, choisi à la main parmi une liste de ceux
  *   actuellement dans le centre de notifications (voir [listAvailableMatches],
  *   appelé depuis MainActivity). Si ce match n'a plus de notif active (fini,
- *   groupe supprimé), on retombe automatiquement sur LATEST plutôt que de ne
+ *   notif supprimée), on retombe automatiquement sur LATEST plutôt que de ne
  *   rien afficher.
  *
  * Nécessite que Yann accorde l'accès aux notifications à cette app
@@ -41,24 +41,30 @@ data class SofascoreMatchOption(
  * directement l'écran système).
  *
  * CONFIRMÉ SUR APPAREIL (test du 12/09, Real Madrid - Rayo Vallecano) :
- * Sofascore poste UNE SEULE notification par match, mise à jour en place,
- * en style Inbox (`EXTRA_TEXT_LINES`, plafonné à 6 lignes par Android —
- * les 6 lignes de la capture le confirment). [collectLines] gère aussi le
- * cas où Sofascore posterait plutôt une notification par événement
- * regroupée par le système (`StatusBarNotification.getGroupKey`), mais ce
- * n'est pas le cas observé.
+ * Sofascore poste UNE notification par match, mise à jour en place, en
+ * style Inbox (`EXTRA_TEXT_LINES`, plafonné à 6 lignes par Android — les 6
+ * lignes de la capture le confirment).
  *
  * ATTENTION ORDRE : `InboxStyle.addLine()` affiche les lignes dans leur
  * ordre d'ajout, la première ajoutée en haut (doc officielle Android). La
  * capture montre l'événement le plus récent EN HAUT ("Match terminé"),
- * donc Sofascore ajoute chaque nouvel événement EN PREMIER (`addLine`
- * appelé avec la dernière ligne avant les anciennes) : le tableau brut
- * `EXTRA_TEXT_LINES` est donc déjà trié du plus récent au plus ancien.
- * [collectLines] ne doit PAS le renverser (une version antérieure le
- * renversait par erreur, ce qui faisait remonter le PREMIER but marqué
- * dans le match — ex. 1-0 — au lieu du score final, la boucle de
- * [SofascoreNotificationParser.parse] s'arrêtant à la première ligne
- * reconnue).
+ * donc Sofascore ajoute chaque nouvel événement EN PREMIER : le tableau brut
+ * `EXTRA_TEXT_LINES` est donc déjà trié du plus récent au plus ancien —
+ * [collectLines] ne le renverse pas.
+ *
+ * CORRIGÉ (test du 14/09, notif tennis affichant le score du foot terminé) :
+ * une version antérieure regroupait les notifs par
+ * [StatusBarNotification.getGroupKey] en supposant qu'une clé de groupe =
+ * un match. En réalité Sofascore semble regrouper TOUTES ses notifications
+ * (tous matchs confondus) sous la même clé de groupe système — un match en
+ * cours de foot et un match de tennis qui démarre se retrouvaient donc dans
+ * le MÊME groupe, et [extractTeams]/[collectLines] picoraient des lignes
+ * des deux matchs mélangées (d'où le score du foot terminé qui ressortait
+ * sur la notif tennis). Le code ne groupe plus du tout : chaque
+ * [StatusBarNotification] Sofascore active est traitée individuellement
+ * (une notif = un match, mise à jour en place — voir plus haut), identifiée
+ * par sa propre [StatusBarNotification.getKey] plutôt que par un groupKey
+ * partagé.
  */
 class SofascoreNotificationListenerService : NotificationListenerService() {
 
@@ -86,20 +92,20 @@ class SofascoreNotificationListenerService : NotificationListenerService() {
         // Le suivi manuel (recherche dans l'app) prime toujours sur ce repli.
         if (FollowedMatchPrefs.load(this) != null) return
 
-        val groups = activeSofascoreGroups() ?: return
-        if (groups.isEmpty()) return
+        val notifications = activeSofascoreNotifications() ?: return
+        if (notifications.isEmpty()) return
 
         // Si un match précis a été choisi ET qu'il a encore une notif
         // active, on le suit ; sinon (mode "dernière", ou match choisi
-        // terminé/supprimé) on retombe sur le groupe le plus récent.
-        val chosenKey = SofascorePrefs.loadChosenGroupKey(this)
+        // terminé/supprimé) on retombe sur la notif la plus récente.
+        val chosenKey = SofascorePrefs.loadChosenKey(this)
             ?.takeIf { SofascorePrefs.loadMode(this) == SofascorePrefs.Mode.CHOSEN }
-        val targetGroup = (chosenKey?.let { groups[it] })
-            ?: groups.values.maxByOrNull { group -> group.maxOf { it.postTime } }
+        val target = (chosenKey?.let { key -> notifications.find { it.key == key } })
+            ?: notifications.maxByOrNull { it.postTime }
             ?: return
 
-        val (homeTeam, awayTeam) = extractTeams(targetGroup) ?: return
-        val lines = collectLines(targetGroup)
+        val (homeTeam, awayTeam) = extractTeams(target) ?: return
+        val lines = collectLines(target)
         if (lines.isEmpty()) return
 
         val match = SofascoreNotificationParser.parse(homeTeam, awayTeam, lines)
@@ -110,22 +116,22 @@ class SofascoreNotificationListenerService : NotificationListenerService() {
 
     /**
      * Liste les matchs Sofascore actuellement dans le centre de
-     * notifications, pour le sélecteur de MainActivity — un par groupe
-     * actif. Vide si l'accès aux notifications n'est pas accordé, ou si
+     * notifications, pour le sélecteur de MainActivity — un par notif
+     * active. Vide si l'accès aux notifications n'est pas accordé, ou si
      * aucune notif Sofascore n'est active.
      */
     fun listAvailableMatches(): List<SofascoreMatchOption> {
-        val groups = activeSofascoreGroups() ?: return emptyList()
-        return groups.mapNotNull { (groupKey, group) ->
-            val (homeTeam, awayTeam) = extractTeams(group) ?: return@mapNotNull null
-            val latestLine = collectLines(group).firstOrNull().orEmpty()
-            SofascoreMatchOption(groupKey, homeTeam, awayTeam, latestLine)
+        val notifications = activeSofascoreNotifications() ?: return emptyList()
+        return notifications.mapNotNull { sbn ->
+            val (homeTeam, awayTeam) = extractTeams(sbn) ?: return@mapNotNull null
+            val latestLine = collectLines(sbn).firstOrNull().orEmpty()
+            SofascoreMatchOption(sbn.key, homeTeam, awayTeam, latestLine)
         }
     }
 
-    /** Notifs Sofascore actives, groupées par match — null si l'accès aux notifications n'est pas accordé. */
-    private fun activeSofascoreGroups(): Map<String, List<StatusBarNotification>>? = try {
-        activeNotifications.filter { it.packageName == SOFASCORE_PACKAGE }.groupBy { it.groupKey }
+    /** Notifs Sofascore actives, une par match — null si l'accès aux notifications n'est pas accordé. */
+    private fun activeSofascoreNotifications(): List<StatusBarNotification>? = try {
+        activeNotifications.filter { it.packageName == SOFASCORE_PACKAGE }
     } catch (e: Exception) {
         null
     }
@@ -136,37 +142,31 @@ class SofascoreNotificationListenerService : NotificationListenerService() {
      * couper un nom d'équipe composé (ex. "Saint-Germain", sans espaces
      * autour de son tiret).
      */
-    private fun extractTeams(group: List<StatusBarNotification>): Pair<String, String>? {
-        val title = group.firstNotNullOfOrNull { sbn ->
-            sbn.notification.extras.getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
-        } ?: return null
+    private fun extractTeams(sbn: StatusBarNotification): Pair<String, String>? {
+        val title = sbn.notification.extras
+            .getCharSequence(Notification.EXTRA_TITLE)?.toString()?.trim()
+            ?: return null
         val teams = title.split(" - ").map { it.trim() }
         if (teams.size != 2 || teams.any { it.isEmpty() }) return null
         return teams[0] to teams[1]
     }
 
     /**
-     * Récupère les lignes du groupe, DU PLUS RÉCENT AU PLUS ANCIEN — que
-     * Sofascore poste une notification par événement (chaque
-     * [StatusBarNotification] du groupe = une ligne, on trie alors par
-     * date de publication) ou une seule notif mise à jour en place
-     * (`EXTRA_TEXT_LINES`, style Inbox). Dans ce second cas — celui
-     * confirmé sur appareil — le tableau `EXTRA_TEXT_LINES` est DÉJÀ
-     * trié du plus récent au plus ancien (voir la note en tête de
-     * fichier) : on ne le renverse plus.
+     * Récupère les lignes d'UNE notif, DU PLUS RÉCENT AU PLUS ANCIEN.
+     * Cas confirmé sur appareil (voir note en tête de fichier) : notif
+     * unique mise à jour en place, `EXTRA_TEXT_LINES` déjà trié du plus
+     * récent au plus ancien (pas besoin de le renverser). Repli sur
+     * `EXTRA_TEXT` (une seule ligne) si `EXTRA_TEXT_LINES` est absent.
      */
-    private fun collectLines(group: List<StatusBarNotification>): List<String> {
-        val lines = mutableListOf<String>()
-        for (sbn in group.sortedByDescending { it.postTime }) {
-            val extras = sbn.notification.extras
-            val textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
-            if (textLines != null && textLines.isNotEmpty()) {
-                lines += textLines.map { it.toString() }
-            } else {
-                extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.let { lines += it }
-            }
+    private fun collectLines(sbn: StatusBarNotification): List<String> {
+        val extras = sbn.notification.extras
+        val textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
+        if (textLines != null && textLines.isNotEmpty()) {
+            return textLines.map { it.toString() }
         }
-        return lines
+        return extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
+            ?.let { listOf(it) }
+            ?: emptyList()
     }
 
     /**

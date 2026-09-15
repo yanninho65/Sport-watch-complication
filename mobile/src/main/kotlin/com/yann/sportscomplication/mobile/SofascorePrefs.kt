@@ -7,10 +7,11 @@ import android.content.Context
  * SofascoreNotificationListenerService) : soit [Mode.LATEST] ("dernière
  * notif", comportement automatique par défaut), soit [Mode.CHOSEN] — un
  * match précis, choisi à la main parmi les notifications actives, identifié
- * par le `groupKey` système de sa notification (stable tant que le groupe
- * reste actif — voir StatusBarNotification.getGroupKey). [chosenLabel] n'est
- * qu'un libellé pour l'affichage (ex. "Real Madrid - Rayo Vallecano"), pas
- * une clé.
+ * par `StatusBarNotification.getKey` de sa notification (stable tant que la
+ * notif reste active, y compris à travers ses mises à jour en place — voir
+ * SofascoreNotificationListenerService pour pourquoi ce n'est PLUS le
+ * `groupKey` système). [chosenLabel] n'est qu'un libellé pour l'affichage
+ * (ex. "Real Madrid - Rayo Vallecano"), pas une clé.
  */
 object SofascorePrefs {
 
@@ -21,15 +22,15 @@ object SofascorePrefs {
     fun saveLatest(context: Context) {
         prefs(context).edit().apply {
             putString("mode", Mode.LATEST.name)
-            remove("chosenGroupKey")
+            remove("chosenKey")
             remove("chosenLabel")
         }.apply()
     }
 
-    fun saveChosen(context: Context, groupKey: String, label: String) {
+    fun saveChosen(context: Context, key: String, label: String) {
         prefs(context).edit().apply {
             putString("mode", Mode.CHOSEN.name)
-            putString("chosenGroupKey", groupKey)
+            putString("chosenKey", key)
             putString("chosenLabel", label)
         }.apply()
     }
@@ -39,7 +40,7 @@ object SofascorePrefs {
             Mode.values().firstOrNull { it.name == name }
         } ?: Mode.LATEST
 
-    fun loadChosenGroupKey(context: Context): String? = prefs(context).getString("chosenGroupKey", null)
+    fun loadChosenKey(context: Context): String? = prefs(context).getString("chosenKey", null)
 
     fun loadChosenLabel(context: Context): String? = prefs(context).getString("chosenLabel", null)
 
