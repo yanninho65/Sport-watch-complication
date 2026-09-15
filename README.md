@@ -1,202 +1,140 @@
 # Sports Complication (Galaxy Watch)
 
-Complication Wear OS qui affiche le score d'un match en direct :
-- **LONG_TEXT** → pour l'emplacement central du visage Zenith
-  (ex. `P1 · PSG 2-1 OM` — l'indication de temps est affichée en
-  premier, voir "Statuts affichés" plus bas)
-- **SMALL_IMAGE** → pour un emplacement "petit rectangle" qui accepte une
-  image en couleur (image composée réunissant les deux logos d'équipe ET
-  le score, couleurs d'origine conservées, voir `ComplicationImageComposer`)
-  — **rendu des logos peu fiable sur Zenith, voir "Limites connues"**
-- **MONOCHROMATIC_IMAGE** → pour un emplacement "petit rectangle" qui
-  n'accepte que du monochrome (ex. bande au-dessus de la carte
-  notification) — même principe, logos et score composés en silhouette
-  blanche que le système teinte lui-même (voir `ComplicationImageComposer`)
-- **SHORT_TEXT** → pour les petits rectangles de Zenith spécifiquement
-  (confirmé : Zenith ne propose que SHORT_TEXT/LONG_TEXT/RANGED_VALUE/
-  MONOCHROMATIC_ICON selon l'emplacement, et ces rectangles-là n'acceptent
-  pas MONOCHROMATIC_IMAGE) — icône = les deux logos en silhouette côte à
-  côte, texte = le score seul (ex. `2-1`) —
-  **rendu de l'icône peu fiable sur Zenith, voir "Limites connues"**
+Complication Wear OS qui affiche le score d'un match en direct. Ce
+README est un document de travail pour Claude (pas pour un humain qui
+découvrirait le projet) : à relire en entier au début de chaque
+conversation sur ce repo, avant de toucher au code. Il ne contient que
+ce qui n'est pas trivialement redéductible du code lui-même — des faits
+externes vérifiés (limites d'API, codes de statut), des décisions déjà
+tranchées (pour ne pas les rouvrir sans raison), et des pièges connus.
+Le détail des formats de notification Sofascore et des expressions
+régulières correspondantes vit dans les commentaires de
+`SofascoreNotificationParser.kt` lui-même, pas ici — ce fichier ne
+reproduit qu'un exemple minimal à titre d'orientation.
 
-Deux modules dans ce repo :
-- `wear/` — la complication elle-même (montre)
-- `mobile/` — l'app téléphone pour choisir le match à suivre
+- **LONG_TEXT** → emplacement central du visage Zenith. Format :
+  statut/temps EN PREMIER, puis équipes/score (ex. `P1 · PSG 2-1 OM`)
+  — voir "Statuts affichés".
+- **SMALL_IMAGE** → petit rectangle acceptant une image couleur : les
+  deux logos + le score, composés par `ComplicationImageComposer`.
+- **MONOCHROMATIC_IMAGE** → petit rectangle monochrome uniquement :
+  même composition, en silhouette blanche (le système teinte).
+- **SHORT_TEXT** → spécifique aux petits rectangles de Zenith (Zenith
+  n'expose que SHORT_TEXT/LONG_TEXT/RANGED_VALUE/MONOCHROMATIC_ICON
+  selon l'emplacement, pas MONOCHROMATIC_IMAGE sur ces cases). Icône =
+  les deux logos en silhouette côte à côte (le type `MonochromaticImage`
+  de l'API Wear OS n'admet qu'une seule image, jamais de couleur —
+  d'où ce compromis plutôt que deux logos illisibles). Texte = le
+  score seul (`2-1`, 7 caractères max, largement suffisant).
+- **Rendu des logos peu fiable sur Zenith** (SMALL_IMAGE et l'icône
+  SHORT_TEXT) : plusieurs dispositions testées, résultat incohérent
+  d'un essai à l'autre sans changement de code, cause non identifiable
+  avec certitude (Zenith ne publie pas les dimensions réelles de ses
+  emplacements, l'API de complication ne les transmet pas non plus —
+  et de toute façon **Android ne transmet à `ComplicationDataSourceService`
+  aucune info sur l'emplacement cible**, donc deux emplacements
+  SMALL_IMAGE différents reçoivent forcément le même rendu). Pipeline
+  de données vérifié correct (domicile/extérieur traités identiquement).
+  Décision prise : ne plus chercher à corriger à l'aveugle — le texte
+  (score, et les noms d'équipe en LONG_TEXT) est le canal fiable sur
+  Zenith, les logos restent implémentés tels quels mais sans garantie.
+
+Deux modules : `wear/` (complication, montre) et `mobile/` (app
+téléphone pour choisir le match à suivre).
 
 ## État actuel
 
-**Montre (`wear/`)** : `ScoreComplicationService` répond aux quatre types
-de complications. Pour SMALL_IMAGE, `ComplicationImageComposer` compose
-une image rectangulaire large (logo domicile, score, logo extérieur,
-tous resserrés près du centre plutôt que près des bords), en couleurs
-d'origine, sans fond peint — le fond sombre de la case hôte suffit, et
-un contour noir derrière le score garantit la lisibilité quel que soit
-le fond. Deux versions précédentes de ce rendu ont été abandonnées
-(cercle pour le Dashboard Samsung, puis logos près des bords d'un
-rectangle large) : voir "Limites connues" plus bas pour le détail et la
-décision finale sur ce point.
-Pour MONOCHROMATIC_IMAGE, `ComplicationImageComposer` compose une image
-rectangulaire large avec le même agencement resserré, mais en silhouette
-blanche uniquement — les logos couleur sont recolorés en blanc via leur
-canal alpha, sans fond peint, pour correspondre à la convention
-monochrome (le système applique ensuite sa propre teinte). Pour
-SHORT_TEXT, `ComplicationImageComposer` compose une petite icône carrée
-avec les deux logos en silhouette côte à côte (sans score dedans) ; le
-score (ex. `2-1`) passe par le champ texte natif du SHORT_TEXT, limité à
-7 caractères par l'API — largement suffisant.
-Aucune config n'est demandée à l'assignation, quel que soit le type : le
-rendu est le même partout. `MatchListenerService` reçoit
-les mises à jour du téléphone (chemin `/match`), décode les deux logos
-reçus en Asset, met à jour `MatchScoreStore`, et force un
-rafraîchissement immédiat. Un DataItem `cleared=true` (envoyé quand le
-suivi est arrêté côté téléphone) réinitialise la complication à "Aucun
-match". `MatchClock` traduit le statut brut de TheSportsDB ("1H", "2H",
-"HT", "FT"...) en français, **sans calculer de minute par déduction**
-— voir la section "Pourquoi pas de minute de jeu chiffrée" plus bas.
-`UPDATE_PERIOD_SECONDS=60` fait rappeler la complication chaque minute
-même sans nouvelle donnée du téléphone.
+**Montre (`wear/`)** : `ScoreComplicationService` répond aux quatre
+types ci-dessus, sans configuration à l'assignation (rendu identique
+partout). `MatchListenerService` reçoit les mises à jour du téléphone
+(chemin `/match`), décode les logos en Asset, met à jour
+`MatchScoreStore`, force un rafraîchissement immédiat ; un DataItem
+`cleared=true` (envoyé quand le suivi s'arrête côté téléphone)
+réinitialise à "Aucun match". `MatchClock` traduit le statut brut en
+français **sans jamais calculer de minute par déduction** (voir
+"Pourquoi pas de minute de jeu chiffrée"). `UPDATE_PERIOD_SECONDS=60`
+fait rappeler la complication chaque minute même sans nouvelle donnée.
 
-**Téléphone (`mobile/`)** : recherche par **équipe**, **joueur** ou
-**ligue** via TheSportsDB (sélecteur en haut de l'écran), puis liste
-des **matchs du jour uniquement** correspondant à la recherche.
-Sélectionner un match démarre `MatchFollowService`, un service de
-premier plan (notification persistante) qui :
-1. Télécharge les logos des deux équipes (`lookupteam.php`) et les
-   convertit en Asset
-2. Envoie le tout à la montre (équipes, score, statut, horodatage du
-   coup d'envoi, logos)
-3. Relit le match toutes les 60 secondes (`lookupevent.php`) et
-   renvoie une mise à jour si le score ou le statut a changé, jusqu'à
-   ce que le match soit terminé
-
-Comme c'est un Service de premier plan (pas une coroutine liée à
-l'Activity), **le suivi continue même si l'app téléphone est fermée ou
-balayée hors des apps récentes**. Un bouton "Arrêter le suivi", affiché
-dans une carte en haut de l'écran tant qu'un match est suivi, permet de
-tout stopper à la main (service arrêté + complication remise à zéro
-côté montre).
+**Téléphone (`mobile/`)** : recherche par équipe/joueur/ligue (choix de
+l'API et du sport, voir section suivante), résultats limités aux
+**matchs du jour**. Sélectionner un match démarre `MatchFollowService`,
+foreground service (le suivi continue app fermée/balayée) qui
+télécharge les logos, envoie tout à la montre, puis relit le match
+périodiquement (60s foot, 3min tennis — voir plus bas) et ne renvoie
+une mise à jour que si score/statut a changé, jusqu'à la fin du match.
+Bouton "Arrêter le suivi" pour stopper à la main (service arrêté +
+complication remise à zéro). **Sur certains Samsung, l'optimisation
+batterie agressive peut couper ce service malgré le statut foreground**
+— si le suivi s'arrête sans raison, désactiver l'optimisation batterie
+pour l'app (Paramètres > Batterie > Sports Complication > Non
+optimisée). **Recherche équipe/joueur limitée aux derniers/prochains
+matchs retournés par l'API gratuite** (`eventslast.php`/`eventsnext.php`,
+lot réduit) : peut afficher "Aucun match aujourd'hui" à tort si le
+match du jour n'est pas dans ce lot. La recherche par ligue
+(`eventsday.php`, filtre par date côté serveur) n'a pas cette limite.
 
 ## Choix de l'API, du sport et intégration tennis
 
-Avant de chercher, l'app téléphone pose deux questions dans l'ordre :
+Deux questions posées avant de chercher : l'**API** (`radioApi` —
+TheSportsDB ou Live Tennis API) puis le **sport** (`radioSportsDbSport`,
+TheSportsDB uniquement — tennis implicite et mono-sport pour Live
+Tennis API) : Tous sports (défaut), Football, Basketball, Handball,
+Rugby, Volleyball. Le filtre sport est **côté client uniquement**
+(`searchteams.php`/`searchplayers.php` n'acceptent pas ce paramètre) :
+la recherche interroge TheSportsDB normalement puis écarte les
+résultats dont `strSport` ne correspond pas. Une version antérieure
+forçait un sport sans option "Tous sports" et cassait la recherche dès
+que `strSport` ne correspondait pas exactement — d'où "Tous sports" en
+défaut désormais.
 
-1. **Quelle API interroger** (`radioApi`) : **TheSportsDB** ou
-   **Live Tennis API**
-2. **Quel sport** (`radioSportsDbSport`, TheSportsDB uniquement — le
-   tennis est implicite pour Live Tennis API, mono-sport) : **Tous
-   sports** (par défaut), Football, Basketball, Handball, Rugby ou
-   Volleyball
+**Limite à connaître** : avec la clé gratuite, la recherche par ligue
+ne renvoie de toute façon qu'une dizaine de grandes ligues de
+**football** (Premier League, Liga, Serie A, Bundesliga, Ligue 1...) —
+choisir un autre sport pour une recherche de ligue donnera très
+probablement 0 résultat. Les recherches équipe/joueur, elles, peuvent
+couvrir d'autres sports selon ce que la clé gratuite indexe, mais ne
+renvoient souvent qu'1-2 résultats. Un passage en clé Premium lève ces
+limites.
 
-**Tous sports** (par défaut) n'ajoute aucun filtre : c'est le
-comportement qui existait avant l'introduction de ce sélecteur, et
-celui qui existait aussi juste après son retrait temporaire (le
-sélecteur avait été retiré entièrement le temps d'une livraison, le
-temps de corriger un bug de recherche — voir plus bas). Choisir un
-sport précis filtre en plus les recherches équipe/joueur/ligue côté
-client, sur le champ `strSport` renvoyé par TheSportsDB (voir
-`SportsDbApi.kt`). Ce n'est PAS un paramètre d'URL envoyé à l'API
-(`searchteams.php`/`searchplayers.php` n'en acceptent pas) : la
-recherche interroge TheSportsDB normalement, puis, si un sport précis a
-été choisi, les résultats dont le sport ne correspond pas sont écartés
-avant affichage. **Limite à connaître** : avec la clé gratuite, la
-recherche de ligues ne renvoie de toute façon qu'une dizaine de grandes
-ligues de FOOTBALL en pratique (voir "Limites connues" plus bas) —
-choisir un autre sport que Football renverra donc très probablement 0
-résultat pour les ligues ; les équipes/joueurs peuvent en revanche
-exister dans d'autres sports selon ce que couvre la clé gratuite.
+**TheSportsDB → Live Tennis API pour le tennis** : TheSportsDB ne
+modélise qu'un score global par équipe (pas de sets/jeux structurés).
+Live Tennis API renvoie `score.sets`/`games`/`points`/`server` (voir
+https://docs.livetennisapi.com). Le volley a été envisagé puis écarté
+comme 3e API (couverture jugée trop limitée côté API gratuites
+trouvées) — il est suivable via le repli Sofascore à la place (voir
+plus bas).
 
-**Historique de ce sélecteur** : la première version forçait à choisir
-un sport (pas d'option "Tous sports"), ce qui écartait à tort de vrais
-résultats dès que le libellé `strSport` ne correspondait pas exactement
-à celui attendu — la recherche semblait "cassée". Il avait alors été
-retiré entièrement. Cette version le réintroduit avec "Tous sports" en
-option par défaut (donc sans ce risque par défaut), tout en gardant les
-sports précis disponibles pour qui veut activement restreindre sa
-recherche.
+**Ce qui est fait** : sélecteurs, recherche joueur, suivi (polling +
+envoi montre), `homeScore`/`awayScore` = sets gagnés. Sur la montre,
+LONG_TEXT affiche aussi le score de JEUX du set en cours quand connu
+(ex. `3e set 4-3 · Alcaraz 2-1 Sinner`) — `MatchClock.liveSetLabel`
+déduit le numéro de set du total de sets gagnés, `currentSetHomeGames`/
+`currentSetAwayGames` viennent tels quels du téléphone
+(`LiveTennisApi.parseMatch`, dernier élément de `score.games`).
+**TODO non fait** : score du JEU en cours (`points`, déjà dans la même
+réponse API, rien ne le relaie encore) ; SMALL_IMAGE/MONOCHROMATIC_IMAGE/
+SHORT_TEXT ne montrent que le score de sets, jamais le set en cours.
 
-Une fois l'API et le sport choisis :
-
-- **TheSportsDB** → recherche par équipe/joueur/ligue (sélecteur
-  `radioSearchMode`, visible uniquement dans ce mode)
-- **Live Tennis API** → recherche par **joueur uniquement** (pas
-  d'équipe/ligue en tennis) — voir `LiveTennisApi.kt`
-
-Le volley a été envisagé puis écarté comme 3e API : les API gratuites
-trouvées pour ce sport (ex. API-VOLLEYBALL) avaient une couverture jugée
-trop limitée pour être utile ici. Seules TheSportsDB et Live Tennis API
-sont intégrées.
-
-**Pourquoi Live Tennis API plutôt que TheSportsDB pour le tennis** :
-TheSportsDB ne modélise que `intHomeScore`/`intAwayScore` (un score
-global par équipe) et un champ texte libre `strResult`, non structuré et
-peu fiable pour cette question — pas de champ dédié au nombre de sets ni
-au score du set en cours. Live Tennis API renvoie au contraire un objet
-`score` structuré : `sets` (sets gagnés par chaque joueur), `games`
-(score du set en cours, par set), `points` (score du jeu en cours) et
-`server`. Voir https://docs.livetennisapi.com pour la référence complète.
-
-**Ce qui est fait** : les sélecteurs d'API et de sport, la recherche de
-joueur, le
-chargement de ses matchs du jour (en direct + à venir) et le suivi
-(polling + envoi à la montre) via `MatchFollowService`/`WatchSync`, avec
-`homeScore`/`awayScore` portant le nombre de **sets** gagnés. En plus,
-sur la montre, le champ LONG_TEXT (emplacement central de Zenith)
-affiche désormais aussi le score de JEUX du set en cours quand le match
-est en direct (ex. `3e set 4-3 · Alcaraz 2-1 Sinner`, indication de
-temps en premier — voir "Statuts affichés" plus bas) — `wear/MatchClock.kt`
-(fonction `tennisLabel`/`liveSetLabel`) déduit le numéro du set du nombre
-de sets déjà gagnés et met en forme `currentSetHomeGames`/
-`currentSetAwayGames`, reçus bruts du téléphone (`score.games`, dernier
-élément de chaque liste — voir `LiveTennisApi.parseMatch`). Statuts
-tennis traduits : "upcoming" → "À venir · HH:mm", "live" → le libellé de
-set ci-dessus (ou "En direct" si le score de jeux n'est pas encore
-connu), "completed" → "Fin", "cancelled" → "Annulé".
-
-**Ce qui reste un TODO séparé** : afficher aussi le score du JEU en
-cours (`points`, ex. "30-15") — l'API le fournit déjà dans le même appel
-que `games`, mais rien ne le relaie encore côté téléphone ; et les
-rendus compacts (SMALL_IMAGE/MONOCHROMATIC_IMAGE/SHORT_TEXT) ne montrent
-toujours que le score de sets, sans le set en cours — manque de place
-plausible dans ces petits formats, pas vérifié sur la montre.
-
-**Clé API requise, saisie DANS L'APP (pas dans le code)** :
-contrairement à la clé de test publique partagée de TheSportsDB, Live
-Tennis API exige une clé personnelle — gratuite mais nominative.
-Inscription sur https://livetennisapi.com/subscribe/free (email
-uniquement, aucune carte bancaire), clé affichée immédiatement sur
-https://livetennisapi.com/account. Elle se colle directement dans le
-champ qui apparaît sur l'écran principal une fois "Live Tennis API"
-sélectionné, puis "Enregistrer la clé" — stockée en local
-(SharedPreferences, `TennisApiKeyPrefs.kt`), jamais dans le code source.
-**Volontaire, puisque le dépôt GitHub est public** : une clé en dur
-dans `LiveTennisApi.kt` (comme l'était la constante `API_KEY` avant
-cette livraison) se serait retrouvée visible de tous sur GitHub. Sans
-clé enregistrée, une recherche tennis affiche directement "Renseigne ta
-clé Live Tennis API ci-dessus" au lieu d'appeler l'API pour rien.
-Pas de chiffrement (SharedPreferences classiques, pas
-EncryptedSharedPreferences) : suffisant pour l'objectif visé (ne plus
-exposer la clé dans le code public), mais un téléphone rooté pourrait
-encore la lire sur le disque — à revoir si besoin d'aller plus loin.
-
-**Plan gratuit Live Tennis API — limite à connaître** : 30
-requêtes/minute **et seulement 100/jour**. Ce deuxième plafond n'existe
-pas chez TheSportsDB (juste 30/min, pas de limite journalière) — c'est
-pourquoi le suivi d'un match de tennis interroge l'API toutes les
-**3 minutes** au lieu de toutes les 60 secondes comme en foot (voir
-`MatchFollowService.pollIntervalMillis`) : à 60s, un seul match de 2-3h
-épuiserait à lui seul le quota du jour, recherches de joueurs comprises.
-Si la clé est absente ou vidée pendant qu'un match tennis est suivi, le
-rafraîchissement périodique échoue silencieusement (comme une panne
-réseau) plutôt que de planter — le dernier score connu reste affiché
-jusqu'à ce qu'une clé valide soit ré-enregistrée.
+**Clé Live Tennis API saisie DANS L'APP, jamais dans le code** (dépôt
+public) : inscription gratuite sur
+https://livetennisapi.com/subscribe/free (email seulement), clé visible
+sur https://livetennisapi.com/account, collée dans le champ dédié une
+fois "Live Tennis API" choisi (`TennisApiKeyPrefs.kt`, SharedPreferences
+non chiffrées — suffisant pour ne pas exposer la clé publiquement, pas
+à l'épreuve d'un téléphone rooté). Sans clé, la recherche tennis
+affiche directement une invite au lieu d'appeler l'API pour rien.
+**Plafond gratuit : 30 req/min ET 100/jour** (TheSportsDB n'a que le
+premier) — d'où un polling tennis à 3 minutes plutôt que 60 secondes
+(un seul match de 2-3h épuiserait sinon le quota du jour à lui seul).
+Clé absente/vidée pendant un suivi : échec silencieux du
+rafraîchissement (comme une panne réseau), dernier score connu affiché
+jusqu'à nouvelle clé valide.
 
 ## Statuts affichés (P1/MT/Fin...)
 
-Vocabulaire volontairement unifié entre sports plutôt que de coller aux
-codes bruts de chaque API — demandé par Yann le 15/09/2026, traduit
-dans `wear/MatchClock.kt` (fonction `label`), affiché EN PREMIER dans
-LONG_TEXT (`P1 · PSG 2-1 OM`, pas l'inverse comme avant cette
-livraison) :
+Vocabulaire unifié entre sports plutôt que les codes bruts de chaque
+API, traduit dans `wear/MatchClock.kt` (`label`), affiché EN PREMIER
+dans LONG_TEXT (`P1 · PSG 2-1 OM`) :
 
 | Code brut TheSportsDB | Sport(s) | Affiché |
 |---|---|---|
@@ -209,315 +147,108 @@ livraison) :
 | `PEN` (foot) / `AP` (handball) | — | `Fin (tab)` |
 
 (codes confirmés sur https://www.thesportsdb.com/docs_api_data,
-15/09/2026 — le reste des statuts déjà gérés par `MatchClock.kt`
-n'a pas changé : `ET`/`BT`/`P`/`SUSP`/`INT`/`PST`/`CANC`/`ABD`/`AWD`/`WO`)
+15/09/2026 ; reste des statuts déjà gérés inchangé :
+`ET`/`BT`/`P`/`SUSP`/`INT`/`PST`/`CANC`/`ABD`/`AWD`/`WO` ; hockey sur
+glace : `P1`/`P2`/`P3` déjà dans ce format côté API, passent tels
+quels)
 
-**Tennis** : aucun indicateur de période affiché en cours de match — le
-score en sets seul suffit à situer la progression, pas besoin de statut
-en plus. Seule la fin (`completed`) est traduite, en `Fin`.
+**Tennis** : aucun indicateur de période en cours de match (le score en
+sets suffit) — seule la fin (`completed`) est traduite, en `Fin`.
 
-**Tennis de table, volley (repli Sofascore)** : contrairement au
-tennis, un indicateur de set EST affiché en cours de match —
-`S<N>` (N = numéro du set en cours), calculé côté téléphone
-(`SofascoreNotificationParser.kt`) puis affiché tel quel côté montre
-(coïncide avec le format brut déjà utilisé par TheSportsDB pour le
-volley, `S1`..`S5`, sans lien direct). `Fin` à la fin, comme les autres
-sports. Voir "Repli Sofascore" ci-dessus pour le détail de la
-déduction (somme des scores = numéro du set).
+**Tennis de table, volley (repli Sofascore)** : indicateur `S<N>` (N =
+numéro du set en cours) affiché en cours de match, calculé côté
+téléphone — voir section Sofascore. Coïncide avec le format brut
+TheSportsDB pour le volley (`S1`..`S5`) sans lien direct.
 
-**But horodaté en foot (repli Sofascore uniquement)** :
-`SofascoreNotificationParser.kt` pousse directement "`MM+`" (ex.
-"`37+`") plutôt que la minute nue — TheSportsDB (suivi manuel) ne
-fournit de toute façon aucune minute en direct sur le plan gratuit
-(voir section suivante), ce format n'existe donc qu'au foot, côté
-Sofascore. Dès que la mi-temps ou la 2e mi-temps commence, la ligne
-Sofascore la plus récente devient "Mi-temps"/"2e mi-temps a commencé"
-plutôt qu'un but, donc le statut repasse automatiquement à `MT`/`P2`
-sans code dédié pour cette transition — le mécanisme "ligne la plus
-récente gagne" (voir plus haut) le gère déjà. **Si la notif ne donne
-pas de minute du tout** (confirmé sur un exemple réel, 15/09/2026 —
-ligue moins couverte par Sofascore, ligne juste "But: score - score
-NomÉquipe") : statut vide plutôt que d'inventer une minute — la
-complication affiche alors juste le score, sans indicateur de temps
-devant (voir `wear/ScoreComplicationService.kt`).
-
-**⚠️ Ce changement touche `wear/` (`MatchClock.kt`,
-`ScoreComplicationService.kt`), pas seulement `mobile/`** — contrairement
-aux livraisons Sofascore précédentes de cette conversation. Il faut
-donc réinstaller `wear-debug` (complication) en plus de `mobile-debug`
-cette fois (voir "Tester la complication sur la montre" plus bas).
+**But horodaté en foot (repli Sofascore)** : `"MM+"` (ex. `"37+"`)
+plutôt que la minute nue — TheSportsDB (suivi manuel) ne fournit de
+toute façon aucune minute en direct sur le plan gratuit (section
+suivante). Si la notif ne donne aucune minute (ligue peu couverte) :
+statut vide, la complication affiche alors juste le score sans rien
+devant (`ScoreComplicationService` omet le séparateur quand le statut
+est vide — vaut aussi pour tout statut vide, pas seulement ce cas).
 
 ## Pourquoi pas de minute de jeu chiffrée
 
 TheSportsDB (plan gratuit, `lookupevent.php`/`eventsnext.php`/
-`eventslast.php`) ne renvoie **aucun champ de minute en direct** — vérifié
-directement sur l'API, pas seulement dans la doc. Le seul champ
-disponible est un statut texte (`strStatus` : `NS`, `1H`, `HT`, `2H`,
-`FT`...). Une vraie minute chiffrée (`strProgress`, format
-"mm:ss - 1st/2nd...") n'existe que sur l'API **Livescores V2**, réservée
-aux abonnés **Premium** (9$/mois, authentification par en-tête
-`X-API-KEY` — voir https://www.thesportsdb.com/pricing).
-
-`MatchClock.kt` a donc été réécrit pour ne plus *estimer* de minute à
-partir de l'heure de coup d'envoi (comme avant) : il traduit
-directement le statut réel donné par l'API. Si tu passes un jour au
-plan Premium, il devient possible d'ajouter un `SportsDbApiV2` dédié
-qui appelle `/api/v2/json/livescore/soccer` pour récupérer une vraie
-minute — pas fait ici pour ne pas ajouter de dépendance payante sans
-que tu l'aies décidé.
+`eventslast.php`) ne renvoie **aucun champ de minute en direct** —
+vérifié sur l'API elle-même, pas juste dans la doc. Seul un statut
+texte (`strStatus`). Une vraie minute (`strProgress`,
+"mm:ss - 1st/2nd...") n'existe que sur l'API Livescores V2, réservée
+au plan **Premium** (9$/mois, voir https://www.thesportsdb.com/pricing).
+`MatchClock.kt` traduit donc le statut réel sans jamais l'estimer à
+partir de l'heure de coup d'envoi. Si passage en Premium un jour :
+ajouter un `SportsDbApiV2` dédié appelant
+`/api/v2/json/livescore/soccer` — pas fait pour ne pas ajouter de
+dépendance payante non demandée.
 
 ## Repli "pas de match sélectionné" : notifications Sofascore
 
-Quand aucun match n'est suivi manuellement, `SofascoreNotificationListenerService`
-relit les notifications de l'app Sofascore (`com.sofascore.results`,
-vérifié via sa fiche Play Store) et pousse un score déduit à la montre —
-tant que la notification Sofascore d'un match reste active, celui-ci
-reste disponible en repli jusqu'à la fin du match.
+Quand aucun match n'est suivi manuellement,
+`SofascoreNotificationListenerService` relit les notifications de
+l'app Sofascore (`com.sofascore.results`, vérifié via sa fiche Play
+Store) et pousse un score déduit à la montre. Détail des gabarits et
+de tous les exemples réels confirmés : commentaires de
+`SofascoreNotificationParser.kt` — ici, seulement les mécanismes et
+faits qui ne sont pas évidents à la lecture du code.
 
-**Une notif Sofascore = un match, mise à jour en place** — confirmé sur
-appareil (test du 12/09/2026, Real Madrid - Rayo Vallecano) : Sofascore
-poste UNE notification par match, mise à jour en place plutôt qu'une
-notification par événement, avec jusqu'à 6 lignes d'historique
-(`EXTRA_TEXT_LINES`, style Inbox, plafond Android). Chaque notif est
-identifiée par sa propre `StatusBarNotification.getKey()` (stable à
-travers ses mises à jour), **pas par le `groupKey` système comme dans
-une version antérieure** : un test réel (14/09/2026, un match de
-tennis démarrant pendant un match de foot déjà suivi) a montré que
-Sofascore regroupe apparemment TOUTES ses notifications sous la même
-clé de groupe, tous matchs confondus — grouper par `groupKey` mélangeait
-donc les lignes de deux matchs différents (le score du foot terminé
-ressortait sur la notif tennis). Le code ne groupe plus du tout :
-chaque notification Sofascore active est traitée individuellement.
-
-**Ordre des lignes confirmé** : `InboxStyle.addLine()` affiche les
-lignes dans leur ordre d'ajout, la première ajoutée en haut (doc
-officielle Android). Sofascore ajoute donc chaque nouvel événement EN
-PREMIER : `EXTRA_TEXT_LINES` est déjà trié du plus récent au plus
-ancien, pas besoin de le renverser (une version antérieure le
-renversait par erreur, ce qui faisait remonter le premier but marqué du
-match — ex. 1-0 — au lieu du score final).
-
-**Foot, tennis, tennis de table et volley couverts**
-(`SofascoreNotificationParser.kt`) — le sport est déduit du contenu des
-lignes (pas d'indicateur dédié dans la notif elle-même) : la présence
-d'au moins une ligne "Xe set terminé" fait basculer sur un vocabulaire
-à sets (tennis, ou tennis de table/volley — voir plus bas comment on
-distingue les deux), sinon gabarit foot.
-
-Foot, d'après l'exemple réel ci-dessus :
-```
-Match terminé : 4 - 1
-90' But : [4] - 1  Kylian Mbappé
-51' But : 3 - [1]  Sergio Camello
-2de mi-temps a commencé: 3 - 0
-Mi-temps : 3 - 0
-35' But : [3] - 0  Jude Bellingham
-```
-et, pour une ligue moins couverte par Sofascore où ni minute ni buteur
-ne sont donnés (confirmé par un exemple réel, 15/09/2026, Kasuka FC -
-Karketu Díli) :
-```
-But: [2] - 0 Kasuka FC
-```
-(le nom qui suit est alors celui de l'ÉQUIPE, pas d'un joueur — sans
-conséquence, ce nom n'est de toute façon pas exploité). Reconnu : fin
-de match, mi-temps, début de 2e mi-temps, coup d'envoi (confirmé par un
-exemple réel, 14/09/2026 : Sofascore écrit simplement "Match commencé",
-sans "a" et sans score accolé — **score forcé à 0-0** dans ce cas, un
-match qui démarre étant toujours à 0-0 ; le gabarit reste tolérant à
-une variante avec "a" et/ou un score explicite, si jamais Sofascore
-l'utilise ailleurs), et un gabarit générique `MM' <libellé> : score -
-score` qui couvre "But" et, sans avoir besoin de connaître le mot
-exact, tout futur événement horodaté par une minute (carton, but
-annulé/corrigé après VAR...) — le score affiché par Sofascore est déjà
-à jour, pas besoin de le recalculer. Le statut poussé à la montre
-réutilise le vocabulaire déjà connu de `wear/MatchClock.kt`
-(`FT`/`HT`/`2H`/`1H`, traduits en `Fin`/`MT`/`P2`/`P1` côté montre —
-voir "Statuts affichés" plus bas), sauf le but horodaté qui pousse
-directement "`MM+`" et le but sans minute (statut vide, voir
-ci-dessus) : **aucun changement côté montre n'a été nécessaire pour le
-PARSING** (la traduction en français, elle, vit entièrement dans
-`MatchClock.kt`, jamais ici).
-
-Tennis, d'après deux exemples réels — un match en cours (14/09/2026,
-E. Jacquemot - L. Samsonova) :
-```
-1er set terminé : 6 - [7] L. Samsonova
-Match commencé
-```
-et un match complet (15/09/2026, M. Kouamé - R. Matsuda) :
-```
-Match terminé : 2 - 0 M. Kouamé
-2d set terminé : [6] - 3 M. Kouamé
-1er set terminé : [6] - 1 M. Kouamé
-Match commencé
-```
-Les noms de joueurs sont déjà au format "Initiale. Nom" dans la notif
-elle-même (titre ET lignes d'événement) : rien à transformer côté app,
-et c'est déjà le format souhaité (voir plus haut). **Score en nombre
-de SETS déduit en additionnant TOUTES les lignes "Xe set terminé"**
-présentes dans la notif (pas seulement la plus récente, contrairement
-au tennis de table/volley ci-dessous) : chaque ligne nomme son
-vainqueur, on incrémente son compteur en comparant ce nom aux deux
-noms extraits du titre de la notif (comparaison exacte, insensible à
-la casse). La ligne "Match terminé" donne juste le statut final
-("completed") — sa propre valeur de score n'est volontairement PAS
-relue, le score en sets vient uniquement du décompte des sets, ce qui
-reste correct même si le format de cette ligne changeait. Pas de score
-de JEUX du set en cours (Sofascore ne le donne qu'À LA FIN d'un set,
-pas pendant) : la montre affiche "En direct" plutôt qu'un score de set
-détaillé tant qu'un set n'est pas terminé.
-
-**Tennis de table (et présumé volley), d'après un exemple réel**
-(15/09/2026, Choi H. - Wang J.) :
-```
-3e set terminé : [2] - 1 Choi H.
-```
-Contrairement au tennis, "[2] - 1" n'est PAS le score de jeux/points du
-set qui vient de finir : c'est déjà le nombre de SETS gagnés par
-chacun (Choi H. mène 2 sets à 1). **Distinction avec le tennis** : les
-deux sports utilisent EXACTEMENT le même gabarit de ligne, donc on se
-sert d'un signal mathématique pour les différencier — la somme des
-deux scores de la ligne la PLUS RÉCENTE égale-t-elle son numéro
-d'ordre ? Ici, 3e set, 2+1=3 : égalité vraie, donc décompte cumulatif
-de sets (tennis de table/volley). Cette égalité ne PEUT être vraie que
-pour un décompte cumulatif (après N sets, les deux joueurs totalisent
-forcément N sets à eux deux) ; au tennis, où ce sont des jeux du set
-qui vient de finir, rien ne garantit cette égalité (6-4 après le 1er
-set : 6+4=10 ≠ 1) — d'où l'idée. Une fois le sport identifié : pas
-besoin d'additionner plusieurs lignes comme au tennis, la ligne la
-PLUS RÉCENTE donne déjà le score total à jour ; le numéro du set EN
-COURS se déduit du dernier set terminé + 1 (ex. 3e set terminé -> on
-est au 4e, statut `S4`, voir "Statuts affichés" plus bas). "Match
-terminé" (présumé même libellé qu'au tennis, pas encore confirmé par
-un exemple réel) donne `Fin`.
-
-**Ambiguïté entre sports au tout début d'un match** : "Match commencé"
-est le même libellé dans tous les sports et rien ne les distingue tant
-qu'aucun set n'est terminé — un match à sets qui vient de démarrer est
-donc affiché brièvement avec le gabarit foot (0-0, statut `P1`) le
-temps que le 1er set se termine, où le bon vocabulaire prend le relais
-automatiquement. Sans conséquence au-delà de quelques minutes en tout
-début de match.
-
-**Tout événement non reconnu** (tous sports confondus, y compris un
-sport pas encore couvert) tombe dans le **repli neutre** : le texte
-brut de la notif la plus récente est affiché tel quel, sans tenter
-d'en déduire un score, pour ne jamais afficher une donnée fausse.
-
-**Amélioration progressive, par petites touches** : le parseur est
-construit au fur et à mesure que Yann envoie des captures ou des
-copier-coller de vraies notifications Sofascore — pas d'un coup, faute
-d'accès direct à l'app pour explorer tous les formats possibles à
-l'avance. Chaque nouveau cas réel (tie-break, abandon, tennis/tennis de
-table en double, volley non encore confirmé, foot : carton, autre
-sport que ceux déjà couverts...) s'ajoute à
-`SofascoreNotificationParser.kt` sous forme d'un nouveau gabarit
-reconnu, sans toucher au reste. Entre-temps, et pour tout ce qui n'est
-pas encore couvert, le **repli neutre** (texte brut affiché tel quel,
-voir ci-dessus) garantit qu'aucune donnée fausse n'est affichée en
-attendant — l'app ne casse jamais sur un format inconnu, elle affiche
-juste moins d'information dessus.
-
-**Accès aux notifications** : permission spéciale, non demandable au
-runtime (contrairement à `POST_NOTIFICATIONS`) — bouton dédié dans
-l'app téléphone ("Activer l'accès aux notifications") qui ouvre
-directement Paramètres > Notifications > Accès aux notifications.
-
-**Quel match suivre en repli** : un second bouton ("Repli Sofascore :
-… (changer)") ouvre une liste — "Dernière notification (auto)" en tête
-(comportement par défaut : la notif la plus récemment mise à jour),
-puis un élément par notif Sofascore active (équipes + aperçu de la
-dernière ligne). Choisir un match précis fixe le repli dessus
-(persisté, `SofascorePrefs.kt`) tant que sa notif reste active ; si
-elle disparaît (match terminé et notif supprimée), le repli retombe
-automatiquement sur "dernière notif" plutôt que de ne plus rien
-afficher. Le match choisi est identifié par la clé de sa notification
-(`StatusBarNotification.getKey`, voir plus haut), pas par les noms
-d'équipes.
-
-Pas de logos d'équipe dans ce mode (impossible à extraire fiablement
-d'une notification tierce) : seul le texte (LONG_TEXT/SHORT_TEXT) est
-renseigné, pas SMALL_IMAGE/MONOCHROMATIC_IMAGE.
-
-## Limites connues
-
-- **Repli notifications Sofascore : foot, tennis, tennis de table et
-  volley couverts** (volley présumé, pas encore confirmé par un
-  exemple réel), autres sports affichés en texte brut (repli neutre) —
-  voir la section dédiée ci-dessus, notamment l'ambiguïté entre sports
-  en tout début de match et l'absence de score de jeux en direct pour
-  un set tennis en cours.
-- **Tennis : 100 requêtes/jour seulement (plan gratuit Live Tennis
-  API)** — voir "Choix de l'API, du sport et intégration tennis"
-  ci-dessus pour le
-  détail et l'intervalle de polling adapté en conséquence. Le volley n'a
-  pas été intégré, couverture jugée trop limitée côté API gratuites.
-- **Pas de minute chiffrée sans Premium** — voir section ci-dessus.
-- **Plan gratuit limité en résultats** : les recherches (équipe/joueur)
-  ne renvoient souvent qu'1-2 résultats, et la recherche par ligue
-  (`all_leagues.php`, filtré côté client faute d'endpoint de recherche
-  textuelle) ne porte que sur une dizaine de grandes ligues de football
-  (Premier League, Liga, Serie A, Bundesliga, **Ligue 1**...) —
-  largement suffisant pour PSG/OM, mais pas pour des ligues plus
-  confidentielles ou d'autres sports. Un passage en clé Premium lève
-  ces limites.
-- **Recherche par équipe/joueur limitée aux derniers/prochains matchs** :
-  `getMatchesForTeam` (utilisé par les recherches équipe et joueur)
-  s'appuie sur `eventslast.php`/`eventsnext.php`, qui ne renvoient
-  qu'un nombre réduit de matchs avec la clé gratuite — si le seul match
-  du jour d'une équipe n'est pas dans ce lot réduit, la recherche
-  affichera "Aucun match aujourd'hui" même s'il y en a un. La recherche
-  par ligue n'a pas cette limite (`eventsday.php` filtre par date côté
-  serveur, sur toute la ligue).
-- **Batterie Samsung** : `MatchFollowService` est un vrai foreground
-  service, mais certains téléphones Samsung appliquent une optimisation
-  batterie agressive qui peut quand même le couper. Si le suivi
-  s'arrête de façon inattendue, désactiver l'optimisation de batterie
-  pour cette app (Paramètres > Batterie > Sports Complication > Non
-  optimisée).
-- **Icône SHORT_TEXT limitée à un seul élément** : le champ icône d'un
-  SHORT_TEXT est typé `MonochromaticImage` dans l'API Wear OS — aucune
-  version couleur n'est possible pour ce champ, sur aucune montre. Il ne
-  peut afficher qu'une seule image simple, d'où le choix de
-  `composeMonochromeIcon` (deux logos compressés côte à côte) plutôt que
-  d'essayer d'en caser deux à taille lisible.
-- **Aucune information sur l'emplacement cible** : Android ne transmet
-  pas à `ComplicationDataSourceService` la forme/taille de l'emplacement
-  qui demande les données — deux emplacements SMALL_IMAGE différents
-  reçoivent forcément la même image. Un seul rendu SMALL_IMAGE est donc
-  possible à la fois pour toute l'app (voir "État actuel" ci-dessus).
-- **Logos dans les petits rectangles Zenith : rendu peu fiable,
-  abandonné.** Plusieurs versions testées sur la montre (logos aux bords
-  d'un rectangle large, puis resserrés près du centre) — dans le
-  meilleur cas un seul logo apparaissait (souvent partiellement), et
-  d'un essai à l'autre, sans changement de code entre les deux, la même
-  case SHORT_TEXT est passée d'"icône visible" à "aucune icône". La
-  cause exacte n'a pas pu être identifiée avec certitude : Zenith ne
-  publie pas les dimensions réelles de ses emplacements, et l'API de
-  complication ne les transmet pas non plus à l'app — impossible donc de
-  garantir un recadrage cohérent. Le pipeline de données (téléchargement
-  et envoi des deux logos, téléphone → montre) a été vérifié et traite
-  domicile/extérieur de façon strictement identique : ce n'est pas un
-  bug côté données. Décision : ne pas continuer à ajuster à l'aveugle.
-  Le texte (score, et le nom des équipes en LONG_TEXT au centre) reste
-  le canal fiable sur Zenith ; les logos dans les petits rectangles
-  restent implémentés tels quels (couleur ou silhouette selon le type)
-  mais sans garantie d'affichage.
+- **Une notif = un match, mise à jour en place** (confirmé sur
+  appareil) : jusqu'à 6 lignes d'historique (`EXTRA_TEXT_LINES`, style
+  Inbox, plafond Android), déjà triées du plus récent au plus ancien
+  (`InboxStyle.addLine()` affiche dans l'ordre d'ajout, Sofascore
+  ajoute chaque événement en tête — ne PAS re-trier).
+  Chaque notif est identifiée par sa propre
+  `StatusBarNotification.getKey()`, **pas par le `groupKey` système**
+  — Sofascore semble regrouper toutes ses notifications (tous matchs
+  confondus) sous la même clé de groupe, donc grouper par `groupKey`
+  mélangeait les lignes de matchs différents.
+- **Sport déduit du contenu des lignes**, aucun indicateur dédié dans
+  la notif : foot par défaut, tennis/tennis de table/volley si une
+  ligne "Xe set terminé" est présente — ces deux derniers partagent
+  EXACTEMENT le même gabarit de ligne que le tennis, distingués par un
+  test arithmétique (somme des deux scores de la ligne la plus récente
+  = numéro d'ordre du set ⟺ décompte cumulatif de sets, impossible en
+  tennis où ce sont des jeux ≥6). Exemple minimal (foot, 12/09/2026,
+  Real Madrid - Rayo Vallecano) :
+  ```
+  35' But : [3] - 0  Jude Bellingham
+  ```
+  Le PREMIER nombre est toujours le score domicile ; les crochets
+  entourent le score de l'équipe qui vient de marquer/gagner le set
+  (non exploités pour déterminer domicile/extérieur).
+- **Ambiguïté au tout début d'un match** : "Match commencé" est le même
+  libellé dans tous les sports, indistinguable tant qu'aucun set n'est
+  terminé — un match à sets qui démarre est donc affiché brièvement
+  avec le gabarit foot (0-0, `P1`) jusqu'à la fin du 1er set.
+- **Événement non reconnu** (sport pas encore couvert, ou format pas
+  encore vu) → repli neutre : texte brut de la notif la plus récente
+  affiché tel quel, jamais de score inventé. Le parseur grandit au fur
+  et à mesure des exemples réels envoyés par Yann, pas d'un coup (pas
+  d'accès direct à l'app Sofascore pour explorer les formats à
+  l'avance).
+- **Accès aux notifications** : permission spéciale non demandable au
+  runtime (contrairement à `POST_NOTIFICATIONS`) — bouton dédié dans
+  l'app qui ouvre directement le réglage système.
+- **Quel match suivre en repli** : bouton "Repli Sofascore : … (changer)"
+  → liste (dernière notif en tête, par défaut) ou choix d'un match
+  précis, persisté par la clé de sa notification (`SofascorePrefs.kt`)
+  ; retombe automatiquement sur "dernière notif" si ce match disparaît
+  (terminé, notif supprimée). Pas de logos dans ce mode (pas
+  d'extraction fiable depuis une notif tierce) : texte seul
+  (LONG_TEXT/SHORT_TEXT).
 
 ## Compiler sans Android Studio
 
-Ce projet est buildé via GitHub Actions, pas en local :
+Buildé via GitHub Actions, pas en local :
 
-1. Pousse ce dépôt sur GitHub (branche `main`)
-2. Le workflow `.github/workflows/build.yml` se déclenche automatiquement
-   (ou lance-le manuellement depuis l'onglet **Actions** → **Build APK**
-   → **Run workflow**)
-3. Une fois le run terminé, ouvre le run → section **Artifacts** →
-   télécharge `wear-debug` (complication) et/ou `mobile-debug` (app
-   téléphone)
-4. Installe l'APK sur l'appareil concerné (via ADB en Wi-Fi, ou une app
-   comme GeminiMan WearOS Manager pour la montre)
+1. Pousse sur `main`
+2. Le workflow `.github/workflows/build.yml` se déclenche seul (ou
+   lance-le à la main : onglet **Actions** → **Build APK** → **Run
+   workflow**)
+3. Run terminé → **Artifacts** → télécharge `wear-debug` et/ou
+   `mobile-debug`
+4. Installe sur l'appareil (ADB Wi-Fi, ou une app comme GeminiMan
+   WearOS Manager pour la montre)
 
 ## Structure du projet
 
@@ -534,7 +265,7 @@ sports-complication-watch/
 │       │   ├── ScoreComplicationService.kt
 │       │   ├── ComplicationImageComposer.kt   dessine les images combinées (2 logos + score) du SMALL_IMAGE, MONOCHROMATIC_IMAGE et SHORT_TEXT
 │       │   ├── MatchListenerService.kt   reçoit les données du téléphone (+ sport, + signal "cleared")
-│       │   ├── MatchClock.kt     traduit le statut foot (TheSportsDB) OU tennis (Live Tennis API) en français, + score du set en cours en tennis
+│       │   ├── MatchClock.kt     traduit le statut (tous sports TheSportsDB + tennis Live Tennis API) en français, + score du set en cours en tennis
 │       │   └── MatchScore.kt     modèle de données (+ sport, + score du set en cours) + cache en mémoire
 │       └── res/                  icônes, strings
 ├── mobile/
@@ -551,7 +282,7 @@ sports-complication-watch/
 │       │   ├── LiveTennisApi.kt         client Live Tennis API — tennis (joueurs, matchs, score par sets), clé passée en paramètre (jamais en dur)
 │       │   ├── TennisApiKeyPrefs.kt     stocke la clé Live Tennis API saisie dans l'app (SharedPreferences, jamais dans le code — dépôt public)
 │       │   ├── SofascoreNotificationListenerService.kt   repli "pas de match sélectionné" : lit les notifs Sofascore, mode "dernière" ou match choisi (SofascorePrefs)
-│       │   ├── SofascoreNotificationParser.kt            transforme les lignes de notif foot en statut/score (vocabulaire MatchClock.kt réutilisé)
+│       │   ├── SofascoreNotificationParser.kt            transforme les lignes de notif (foot/tennis/tennis de table/volley) en statut/score — vocabulaire MatchClock.kt réutilisé, tous les exemples réels confirmés sont documentés ici
 │       │   ├── SofascorePrefs.kt        persiste le choix dernière notif / match précis (clé de notification) pour le repli Sofascore
 │       │   ├── Models.kt                ApiSource / TeamResult / PlayerResult / TennisPlayerResult / LeagueResult / MatchResult
 │       │   ├── SimpleListAdapter.kt     liste générique (équipes, joueurs de foot/tennis/etc., ligues, choix du repli Sofascore)
@@ -564,40 +295,31 @@ sports-complication-watch/
 
 ## Pourquoi un keystore de debug fixe (`wear/debug.keystore` et `mobile/debug.keystore`)
 
-Sans ça, chaque run GitHub Actions génère un keystore de debug
-aléatoire, donc chaque nouvel APK est signé différemment — impossible
-d'installer une mise à jour par-dessus une version précédente
-(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Ce keystore committé (mot de
+Sans ça, chaque run GitHub Actions génère un keystore aléatoire, donc
+chaque APK est signé différemment — impossible d'installer une mise à
+jour par-dessus une version précédente
+(`INSTALL_FAILED_UPDATE_INCOMPATIBLE`). Keystore committé (mot de
 passe `android`, alias `androiddebugkey` — valeurs standard, sans enjeu
-de sécurité pour un debug local) garantit une signature stable entre
-les builds. **C'est aussi une exigence de la Data Layer API** (voir
-ci-dessous) : les deux modules utilisent le même fichier keystore pour
-être signés à l'identique.
+de sécurité pour du debug local) pour une signature stable entre
+builds. **Aussi une exigence de la Data Layer API** (voir ci-dessous) :
+les deux modules doivent être signés à l'identique.
 
 ## Pourquoi `mobile` et `wear` ont le même applicationId
 
-La Data Layer API (utilisée pour envoyer le match du téléphone vers la
-montre) **exige que les deux apps partagent le même nom de package ET
-soient signées avec la même clé** — sinon Play Services traite les deux
-apps comme complètement étrangères l'une à l'autre : l'envoi réussit
-silencieusement côté téléphone, mais rien n'arrive jamais côté montre,
-sans la moindre erreur. D'où `applicationId = "com.yann.sportscomplication"`
-identique dans les deux `build.gradle.kts` (seul le `namespace`, qui ne
-sert qu'à l'organisation du code Kotlin, diffère).
+La Data Layer API (envoi téléphone → montre) **exige le même nom de
+package ET la même clé de signature** — sinon Play Services traite les
+deux apps comme étrangères : l'envoi réussit silencieusement côté
+téléphone, rien n'arrive jamais côté montre, sans erreur. D'où
+`applicationId = "com.yann.sportscomplication"` identique dans les deux
+`build.gradle.kts` (seul le `namespace`, purement Kotlin, diffère).
 
 ## Tester la complication sur la montre
 
-Une fois l'APK `wear` installé :
-1. Sur le visage **Zenith**, assigne la complication "Score en direct" à
-   l'emplacement central (type LONG_TEXT)
-2. Sur les petits rectangles de Zenith, teste les types proposés selon
-   l'emplacement : SHORT_TEXT (score en texte, ex. `2-1`) ou SMALL_IMAGE
-   (logo(s) + score composés en image) — le score s'affiche de façon
-   fiable, mais l'affichage des logos y est expérimental et peu fiable
-   (voir "Limites connues") ; aucune config ne s'affiche à l'assignation,
-   quel que soit le type retenu
-3. Cherche un match dans l'app téléphone (équipe, joueur ou ligue) et
-   sélectionne-le — la montre devrait se mettre à jour en quelques
-   secondes, puis continuer à se rafraîchir toutes les minutes, même si
-   tu fermes l'app téléphone. Le bouton "Arrêter le suivi" dans l'app
-   téléphone remet la complication à "Aucun match".
+1. Sur **Zenith**, assigne "Score en direct" à l'emplacement central
+   (LONG_TEXT)
+2. Sur les petits rectangles, teste SHORT_TEXT ou SMALL_IMAGE selon
+   l'emplacement — le score est fiable, les logos expérimentaux (voir
+   plus haut) ; aucune config à l'assignation
+3. Cherche un match côté téléphone et sélectionne-le — mise à jour
+   montre en quelques secondes puis toutes les minutes, même app
+   téléphone fermée. "Arrêter le suivi" remet à "Aucun match".
