@@ -212,10 +212,18 @@ livraison) :
 15/09/2026 — le reste des statuts déjà gérés par `MatchClock.kt`
 n'a pas changé : `ET`/`BT`/`P`/`SUSP`/`INT`/`PST`/`CANC`/`ABD`/`AWD`/`WO`)
 
-**Sports à SET (volley, tennis)** : aucun indicateur de période affiché
-en cours de match — le score en sets seul suffit à situer la
-progression, pas besoin de statut en plus. Seule la fin (`FT` en
-volley, `completed` en tennis) est traduite, en `Fin`.
+**Tennis** : aucun indicateur de période affiché en cours de match — le
+score en sets seul suffit à situer la progression, pas besoin de statut
+en plus. Seule la fin (`completed`) est traduite, en `Fin`.
+
+**Tennis de table, volley (repli Sofascore)** : contrairement au
+tennis, un indicateur de set EST affiché en cours de match —
+`S<N>` (N = numéro du set en cours), calculé côté téléphone
+(`SofascoreNotificationParser.kt`) puis affiché tel quel côté montre
+(coïncide avec le format brut déjà utilisé par TheSportsDB pour le
+volley, `S1`..`S5`, sans lien direct). `Fin` à la fin, comme les autres
+sports. Voir "Repli Sofascore" ci-dessus pour le détail de la
+déduction (somme des scores = numéro du set).
 
 **But horodaté en foot (repli Sofascore uniquement)** :
 `SofascoreNotificationParser.kt` pousse directement "`MM+`" (ex.
@@ -226,7 +234,12 @@ Sofascore. Dès que la mi-temps ou la 2e mi-temps commence, la ligne
 Sofascore la plus récente devient "Mi-temps"/"2e mi-temps a commencé"
 plutôt qu'un but, donc le statut repasse automatiquement à `MT`/`P2`
 sans code dédié pour cette transition — le mécanisme "ligne la plus
-récente gagne" (voir plus haut) le gère déjà.
+récente gagne" (voir plus haut) le gère déjà. **Si la notif ne donne
+pas de minute du tout** (confirmé sur un exemple réel, 15/09/2026 —
+ligue moins couverte par Sofascore, ligne juste "But: score - score
+NomÉquipe") : statut vide plutôt que d'inventer une minute — la
+complication affiche alors juste le score, sans indicateur de temps
+devant (voir `wear/ScoreComplicationService.kt`).
 
 **⚠️ Ce changement touche `wear/` (`MatchClock.kt`,
 `ScoreComplicationService.kt`), pas seulement `mobile/`** — contrairement
@@ -284,10 +297,12 @@ ancien, pas besoin de le renverser (une version antérieure le
 renversait par erreur, ce qui faisait remonter le premier but marqué du
 match — ex. 1-0 — au lieu du score final).
 
-**Foot et tennis couverts** (`SofascoreNotificationParser.kt`) — le
-sport est déduit du contenu des lignes (pas d'indicateur dédié dans la
-notif elle-même) : la présence d'au moins une ligne "Xe set terminé"
-fait basculer sur le vocabulaire tennis, sinon gabarit foot.
+**Foot, tennis, tennis de table et volley couverts**
+(`SofascoreNotificationParser.kt`) — le sport est déduit du contenu des
+lignes (pas d'indicateur dédié dans la notif elle-même) : la présence
+d'au moins une ligne "Xe set terminé" fait basculer sur un vocabulaire
+à sets (tennis, ou tennis de table/volley — voir plus bas comment on
+distingue les deux), sinon gabarit foot.
 
 Foot, d'après l'exemple réel ci-dessus :
 ```
@@ -298,20 +313,31 @@ Match terminé : 4 - 1
 Mi-temps : 3 - 0
 35' But : [3] - 0  Jude Bellingham
 ```
-Reconnu : fin de match, mi-temps, début de 2e mi-temps, coup d'envoi
-(confirmé par un exemple réel, 14/09/2026 : Sofascore écrit simplement
-"Match commencé", sans "a" et sans score accolé — **score forcé à 0-0**
-dans ce cas, un match qui démarre étant toujours à 0-0 ; le gabarit
-reste tolérant à une variante avec "a" et/ou un score explicite, si
-jamais Sofascore l'utilise ailleurs), et un gabarit générique
-`MM' <libellé> : score - score` qui couvre "But" et, sans avoir besoin
-de connaître le mot exact, tout futur événement horodaté par une
-minute (carton, but annulé/corrigé après VAR...) — le score affiché
-par Sofascore est déjà à jour, pas besoin de le recalculer. Le statut
-poussé à la montre réutilise le vocabulaire déjà connu de
-`wear/MatchClock.kt` (`FT`/`HT`/`2H`/`1H`, ou un nombre nu affiché
-`"MM'"`) : **aucun changement côté montre n'a été nécessaire** pour ce
-repli côté foot.
+et, pour une ligue moins couverte par Sofascore où ni minute ni buteur
+ne sont donnés (confirmé par un exemple réel, 15/09/2026, Kasuka FC -
+Karketu Díli) :
+```
+But: [2] - 0 Kasuka FC
+```
+(le nom qui suit est alors celui de l'ÉQUIPE, pas d'un joueur — sans
+conséquence, ce nom n'est de toute façon pas exploité). Reconnu : fin
+de match, mi-temps, début de 2e mi-temps, coup d'envoi (confirmé par un
+exemple réel, 14/09/2026 : Sofascore écrit simplement "Match commencé",
+sans "a" et sans score accolé — **score forcé à 0-0** dans ce cas, un
+match qui démarre étant toujours à 0-0 ; le gabarit reste tolérant à
+une variante avec "a" et/ou un score explicite, si jamais Sofascore
+l'utilise ailleurs), et un gabarit générique `MM' <libellé> : score -
+score` qui couvre "But" et, sans avoir besoin de connaître le mot
+exact, tout futur événement horodaté par une minute (carton, but
+annulé/corrigé après VAR...) — le score affiché par Sofascore est déjà
+à jour, pas besoin de le recalculer. Le statut poussé à la montre
+réutilise le vocabulaire déjà connu de `wear/MatchClock.kt`
+(`FT`/`HT`/`2H`/`1H`, traduits en `Fin`/`MT`/`P2`/`P1` côté montre —
+voir "Statuts affichés" plus bas), sauf le but horodaté qui pousse
+directement "`MM+`" et le but sans minute (statut vide, voir
+ci-dessus) : **aucun changement côté montre n'a été nécessaire pour le
+PARSING** (la traduction en français, elle, vit entièrement dans
+`MatchClock.kt`, jamais ici).
 
 Tennis, d'après deux exemples réels — un match en cours (14/09/2026,
 E. Jacquemot - L. Samsonova) :
@@ -331,42 +357,67 @@ elle-même (titre ET lignes d'événement) : rien à transformer côté app,
 et c'est déjà le format souhaité (voir plus haut). **Score en nombre
 de SETS déduit en additionnant TOUTES les lignes "Xe set terminé"**
 présentes dans la notif (pas seulement la plus récente, contrairement
-au foot) : chaque ligne nomme son vainqueur, on incrémente son
-compteur en comparant ce nom aux deux noms extraits du titre de la
-notif (comparaison exacte, insensible à la casse). La ligne "Match
-terminé" donne juste le statut final ("completed") — sa propre valeur
-de score n'est volontairement PAS relue, le score en sets vient
-uniquement du décompte des sets, ce qui reste correct même si le
-format de cette ligne changeait. Pas de score de JEUX du set en cours
-(Sofascore ne le donne qu'À LA FIN d'un set, pas pendant) : la montre
-affiche "En direct" plutôt qu'un score de set détaillé tant qu'un set
-n'est pas terminé.
+au tennis de table/volley ci-dessous) : chaque ligne nomme son
+vainqueur, on incrémente son compteur en comparant ce nom aux deux
+noms extraits du titre de la notif (comparaison exacte, insensible à
+la casse). La ligne "Match terminé" donne juste le statut final
+("completed") — sa propre valeur de score n'est volontairement PAS
+relue, le score en sets vient uniquement du décompte des sets, ce qui
+reste correct même si le format de cette ligne changeait. Pas de score
+de JEUX du set en cours (Sofascore ne le donne qu'À LA FIN d'un set,
+pas pendant) : la montre affiche "En direct" plutôt qu'un score de set
+détaillé tant qu'un set n'est pas terminé.
 
-**Ambiguïté foot/tennis au tout début d'un match** : "Match commencé"
-est le même libellé dans les deux sports et rien ne les distingue tant
-qu'aucun set n'est terminé — un match de tennis qui vient de démarrer
-est donc affiché brièvement avec le gabarit foot (0-0, statut "1ère
-MT") le temps que le 1er set se termine, où le vocabulaire tennis
-prend le relais automatiquement. Sans conséquence au-delà de quelques
-minutes en tout début de match.
+**Tennis de table (et présumé volley), d'après un exemple réel**
+(15/09/2026, Choi H. - Wang J.) :
+```
+3e set terminé : [2] - 1 Choi H.
+```
+Contrairement au tennis, "[2] - 1" n'est PAS le score de jeux/points du
+set qui vient de finir : c'est déjà le nombre de SETS gagnés par
+chacun (Choi H. mène 2 sets à 1). **Distinction avec le tennis** : les
+deux sports utilisent EXACTEMENT le même gabarit de ligne, donc on se
+sert d'un signal mathématique pour les différencier — la somme des
+deux scores de la ligne la PLUS RÉCENTE égale-t-elle son numéro
+d'ordre ? Ici, 3e set, 2+1=3 : égalité vraie, donc décompte cumulatif
+de sets (tennis de table/volley). Cette égalité ne PEUT être vraie que
+pour un décompte cumulatif (après N sets, les deux joueurs totalisent
+forcément N sets à eux deux) ; au tennis, où ce sont des jeux du set
+qui vient de finir, rien ne garantit cette égalité (6-4 après le 1er
+set : 6+4=10 ≠ 1) — d'où l'idée. Une fois le sport identifié : pas
+besoin d'additionner plusieurs lignes comme au tennis, la ligne la
+PLUS RÉCENTE donne déjà le score total à jour ; le numéro du set EN
+COURS se déduit du dernier set terminé + 1 (ex. 3e set terminé -> on
+est au 4e, statut `S4`, voir "Statuts affichés" plus bas). "Match
+terminé" (présumé même libellé qu'au tennis, pas encore confirmé par
+un exemple réel) donne `Fin`.
 
-**Tout événement non reconnu** (les deux sports confondus, ou un sport
-pas encore couvert) tombe dans le **repli neutre** : le texte brut de
-la notif la plus récente est affiché tel quel, sans tenter d'en
-déduire un score, pour ne jamais afficher une donnée fausse.
+**Ambiguïté entre sports au tout début d'un match** : "Match commencé"
+est le même libellé dans tous les sports et rien ne les distingue tant
+qu'aucun set n'est terminé — un match à sets qui vient de démarrer est
+donc affiché brièvement avec le gabarit foot (0-0, statut `P1`) le
+temps que le 1er set se termine, où le bon vocabulaire prend le relais
+automatiquement. Sans conséquence au-delà de quelques minutes en tout
+début de match.
+
+**Tout événement non reconnu** (tous sports confondus, y compris un
+sport pas encore couvert) tombe dans le **repli neutre** : le texte
+brut de la notif la plus récente est affiché tel quel, sans tenter
+d'en déduire un score, pour ne jamais afficher une donnée fausse.
 
 **Amélioration progressive, par petites touches** : le parseur est
 construit au fur et à mesure que Yann envoie des captures ou des
 copier-coller de vraies notifications Sofascore — pas d'un coup, faute
 d'accès direct à l'app pour explorer tous les formats possibles à
-l'avance. Chaque nouveau cas réel (tie-break, abandon, tennis en
-double, foot : but annulé/corrigé après VAR, carton, autre sport que
-le foot/tennis...) s'ajoute à `SofascoreNotificationParser.kt` sous
-forme d'un nouveau gabarit reconnu, sans toucher au reste. Entre-temps,
-et pour tout ce qui n'est pas encore couvert, le **repli neutre**
-(texte brut affiché tel quel, voir ci-dessus) garantit qu'aucune
-donnée fausse n'est affichée en attendant — l'app ne casse jamais sur
-un format inconnu, elle affiche juste moins d'information dessus.
+l'avance. Chaque nouveau cas réel (tie-break, abandon, tennis/tennis de
+table en double, volley non encore confirmé, foot : carton, autre
+sport que ceux déjà couverts...) s'ajoute à
+`SofascoreNotificationParser.kt` sous forme d'un nouveau gabarit
+reconnu, sans toucher au reste. Entre-temps, et pour tout ce qui n'est
+pas encore couvert, le **repli neutre** (texte brut affiché tel quel,
+voir ci-dessus) garantit qu'aucune donnée fausse n'est affichée en
+attendant — l'app ne casse jamais sur un format inconnu, elle affiche
+juste moins d'information dessus.
 
 **Accès aux notifications** : permission spéciale, non demandable au
 runtime (contrairement à `POST_NOTIFICATIONS`) — bouton dédié dans
@@ -391,11 +442,12 @@ renseigné, pas SMALL_IMAGE/MONOCHROMATIC_IMAGE.
 
 ## Limites connues
 
-- **Repli notifications Sofascore : foot et tennis couverts**, autres
-  sports affichés en texte brut (repli neutre) — voir la section
-  dédiée ci-dessus, notamment l'ambiguïté foot/tennis en tout début de
-  match et l'absence de score de jeux en direct pour un set tennis en
-  cours.
+- **Repli notifications Sofascore : foot, tennis, tennis de table et
+  volley couverts** (volley présumé, pas encore confirmé par un
+  exemple réel), autres sports affichés en texte brut (repli neutre) —
+  voir la section dédiée ci-dessus, notamment l'ambiguïté entre sports
+  en tout début de match et l'absence de score de jeux en direct pour
+  un set tennis en cours.
 - **Tennis : 100 requêtes/jour seulement (plan gratuit Live Tennis
   API)** — voir "Choix de l'API, du sport et intégration tennis"
   ci-dessus pour le
