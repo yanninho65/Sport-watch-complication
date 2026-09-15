@@ -1,5 +1,6 @@
 package com.yann.sportscomplication
 
+import android.app.PendingIntent
 import android.graphics.drawable.Icon
 import androidx.wear.watchface.complications.data.ComplicationData
 import androidx.wear.watchface.complications.data.ComplicationType
@@ -50,8 +51,36 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
  * MatchClock n'a plus de minute à recalculer par lui-même (voir
  * MatchClock.kt : le statut affiché vient tel quel de TheSportsDB en
  * football, de Live Tennis API en tennis).
+ *
+ * Un tap sur la complication ouvre l'app Sofascore SUR LA MONTRE (demandé
+ * par Yann le 15/09/2026) — voir [sofascoreTapAction]. Nécessite que
+ * Sofascore (ou son équivalent Wear OS) soit installé sur la montre elle
+ * -même (distinct du téléphone) ; sans ça, le tap ne fait simplement rien
+ * plutôt que planter (voir [sofascoreTapAction]). Nécessite aussi un
+ * élément `<queries>` déclarant ce package dans AndroidManifest.xml —
+ * requis à partir d'Android 11 pour que `getLaunchIntentForPackage` puisse
+ * voir un package qui n'est pas le sien.
  */
 class ScoreComplicationService : ComplicationDataSourceService() {
+
+    // Suppose que l'app Sofascore sur la montre a le même nom de package
+    // que sur le téléphone (vérifié côté téléphone via le Play Store, voir
+    // mobile/SofascoreNotificationListenerService.kt) — à corriger si
+    // jamais son équivalent Wear OS utilise un package différent.
+    private val sofascoreTapAction: PendingIntent?
+        get() {
+            val launchIntent = packageManager.getLaunchIntentForPackage(SOFASCORE_PACKAGE) ?: return null
+            return PendingIntent.getActivity(
+                this,
+                0,
+                launchIntent,
+                PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+            )
+        }
+
+    companion object {
+        private const val SOFASCORE_PACKAGE = "com.sofascore.results"
+    }
 
     override fun onComplicationRequest(
         request: ComplicationRequest,
@@ -101,14 +130,9 @@ class ScoreComplicationService : ComplicationDataSourceService() {
                 contentDescription = PlainComplicationText.Builder(
                     "Aucun match sélectionné"
                 ).build()
-            ).build()
+            ).setTapAction(sofascoreTapAction).build()
         }
 
-        val scoreText = if (match.homeScore != null && match.awayScore != null) {
-            "${match.homeScore}-${match.awayScore}"
-        } else {
-            "vs"
-        }
         // Indication de temps (P1/MT/P2/Fin...) en premier, puis
         // équipes/score — demandé par Yann le 15/09/2026 (auparavant
         // l'ordre inverse : "PSG 2-1 OM · 1ère MT"). Si MatchClock.label
@@ -116,6 +140,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
         // on omet le "· " plutôt que d'afficher un séparateur seul devant
         // rien.
         val statusLabel = MatchClock.label(match)
+        val scoreText = match.scoreText()
         val text = if (statusLabel.isBlank()) {
             "${match.homeTeam} $scoreText ${match.awayTeam}"
         } else {
@@ -125,19 +150,14 @@ class ScoreComplicationService : ComplicationDataSourceService() {
         return LongTextComplicationData.Builder(
             text = PlainComplicationText.Builder(text).build(),
             contentDescription = PlainComplicationText.Builder(text).build()
-        ).build()
+        ).setTapAction(sofascoreTapAction).build()
     }
 
     private fun buildSmallImage(match: MatchScore?): ComplicationData {
         val icon = Icon.createWithBitmap(ComplicationImageComposer.composeColorWide(match))
 
         val description = match?.let {
-            val scoreText = if (it.homeScore != null && it.awayScore != null) {
-                "${it.homeScore}-${it.awayScore}"
-            } else {
-                "vs"
-            }
-            "${it.homeTeam} $scoreText ${it.awayTeam}"
+            "${it.homeTeam} ${it.scoreText()} ${it.awayTeam}"
         } ?: "Aucun match sélectionné"
 
         return SmallImageComplicationData.Builder(
@@ -146,33 +166,24 @@ class ScoreComplicationService : ComplicationDataSourceService() {
             // Contrepartie : pas d'affichage en mode Always-On Display.
             smallImage = SmallImage.Builder(icon, SmallImageType.PHOTO).build(),
             contentDescription = PlainComplicationText.Builder(description).build()
-        ).build()
+        ).setTapAction(sofascoreTapAction).build()
     }
 
     private fun buildMonochromaticImage(match: MatchScore?): ComplicationData {
         val icon = Icon.createWithBitmap(ComplicationImageComposer.composeMonochromeWide(match))
 
         val description = match?.let {
-            val scoreText = if (it.homeScore != null && it.awayScore != null) {
-                "${it.homeScore}-${it.awayScore}"
-            } else {
-                "vs"
-            }
-            "${it.homeTeam} $scoreText ${it.awayTeam}"
+            "${it.homeTeam} ${it.scoreText()} ${it.awayTeam}"
         } ?: "Aucun match sélectionné"
 
         return MonochromaticImageComplicationData.Builder(
             monochromaticImage = MonochromaticImage.Builder(icon).build(),
             contentDescription = PlainComplicationText.Builder(description).build()
-        ).build()
+        ).setTapAction(sofascoreTapAction).build()
     }
 
     private fun buildShortText(match: MatchScore?): ComplicationData {
-        val scoreText = if (match?.homeScore != null && match.awayScore != null) {
-            "${match.homeScore}-${match.awayScore}"
-        } else {
-            "vs"
-        }
+        val scoreText = match?.scoreText() ?: "vs"
 
         val description = match?.let {
             "${it.homeTeam} $scoreText ${it.awayTeam}"
@@ -185,6 +196,7 @@ class ScoreComplicationService : ComplicationDataSourceService() {
             contentDescription = PlainComplicationText.Builder(description).build()
         )
             .setMonochromaticImage(MonochromaticImage.Builder(icon).build())
+            .setTapAction(sofascoreTapAction)
             .build()
     }
 }

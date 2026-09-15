@@ -194,11 +194,8 @@ object ComplicationImageComposer {
         canvas.drawText(text, WIDE_CENTER_X, baselineY, fillPaint)
     }
 
-    private fun scoreText(match: MatchScore?): String {
-        return if (match?.homeScore != null && match.awayScore != null) {
-            "${match.homeScore}-${match.awayScore}"
-        } else {
-            "vs"
-        }
-    }
+    // Délègue à MatchScore.scoreText() (voir MatchScore.kt) — un seul
+    // endroit calcule le texte "H-A"/"vs" avec crochets, partagé avec
+    // ScoreComplicationService.kt.
+    private fun scoreText(match: MatchScore?): String = match?.scoreText() ?: "vs"
 }

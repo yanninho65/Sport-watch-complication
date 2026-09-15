@@ -33,6 +33,12 @@ import android.graphics.Bitmap
  * a échoué côté téléphone (systématiquement `null` en tennis, où il n'y
  * a pas de logo) — dans ce cas la complication retombe sur une icône
  * placeholder locale.
+ *
+ * [lastScorer] ("home"/"away", ou null) indique quel côté vient de
+ * marquer/gagner le dernier set — repris des crochets de la notif
+ * Sofascore elle-même (voir mobile/SofascoreNotificationParser.kt), donc
+ * toujours null pour un match suivi via TheSportsDB/Live Tennis API. Voir
+ * [scoreText] pour l'affichage.
  */
 data class MatchScore(
     val homeTeam: String,
@@ -41,12 +47,33 @@ data class MatchScore(
     val awayScore: Int?,
     val currentSetHomeGames: Int? = null,
     val currentSetAwayGames: Int? = null,
+    val lastScorer: String? = null,
     val status: String,
     val kickoffEpochMillis: Long?,
     val homeLogo: Bitmap?,
     val awayLogo: Bitmap?,
     val apiSource: String = "SPORTS_DB"
 )
+
+/**
+ * "2-1" (ou "vs" si le score n'est pas encore connu) — entoure de
+ * crochets le nombre de l'équipe désignée par [MatchScore.lastScorer]
+ * ("home"/"away"), pour reprendre la même convention que les notifs
+ * Sofascore elles-mêmes. Demandé de nouveau par Yann le 15/09/2026 (une
+ * version antérieure de l'app les ignorait) — voir
+ * mobile/SofascoreNotificationParser.kt/bracketedSide pour l'origine de
+ * cette info. `null` (score pas encore connu, ou origine du dernier point
+ * non fournie par la source — ex. TheSportsDB/Live Tennis API) -> pas de
+ * crochets. Utilisée par ScoreComplicationService.kt et
+ * ComplicationImageComposer.kt, pour ne calculer ce texte qu'à un seul
+ * endroit.
+ */
+fun MatchScore.scoreText(): String {
+    if (homeScore == null || awayScore == null) return "vs"
+    val home = if (lastScorer == "home") "[$homeScore]" else "$homeScore"
+    val away = if (lastScorer == "away") "[$awayScore]" else "$awayScore"
+    return "$home-$away"
+}
 
 /**
  * Cache en mémoire du dernier score reçu.

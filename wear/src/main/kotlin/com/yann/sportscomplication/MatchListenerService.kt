@@ -62,6 +62,9 @@ class MatchListenerService : WearableListenerService() {
                 } else {
                     null
                 }
+                // Absent (null) pour un match sans crochet connu (TheSportsDB/
+                // Live Tennis API, ou pas encore de but/set) — voir MatchScore.kt/scoreText.
+                val lastScorer = dataMap.getString("lastScorer")
                 val status = dataMap.getString("status").orEmpty()
                 val kickoff = if (dataMap.containsKey("kickoffEpochMillis")) {
                     dataMap.getLong("kickoffEpochMillis")
@@ -76,6 +79,7 @@ class MatchListenerService : WearableListenerService() {
                     awayScore = awayScore,
                     currentSetHomeGames = currentSetHomeGames,
                     currentSetAwayGames = currentSetAwayGames,
+                    lastScorer = lastScorer,
                     status = status,
                     kickoffEpochMillis = kickoff,
                     homeLogo = decodeLogo(dataMap, "homeLogo"),
