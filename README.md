@@ -240,6 +240,19 @@ tombe dans le **repli neutre** : le texte brut de la notif la plus
 récente est affiché tel quel, sans tenter d'en déduire un score, pour
 ne jamais afficher une donnée fausse.
 
+**Amélioration progressive, par petites touches** : le parseur est
+construit au fur et à mesure que Yann envoie des captures ou des
+copier-coller de vraies notifications Sofascore — pas d'un coup, faute
+d'accès direct à l'app pour explorer tous les formats possibles à
+l'avance. Chaque nouveau cas réel (tennis : fin de set, fin de match ;
+foot : but annulé/corrigé après VAR, carton, autre sport que le foot...)
+s'ajoute à `SofascoreNotificationParser.kt` sous forme d'un nouveau
+gabarit reconnu, sans toucher au reste. Entre-temps, et pour tout ce qui
+n'est pas encore couvert, le **repli neutre** (texte brut affiché tel
+quel, voir ci-dessus) garantit qu'aucune donnée fausse n'est affichée en
+attendant — l'app ne casse jamais sur un format inconnu, elle affiche
+juste moins d'information dessus.
+
 **Accès aux notifications** : permission spéciale, non demandable au
 runtime (contrairement à `POST_NOTIFICATIONS`) — bouton dédié dans
 l'app téléphone ("Activer l'accès aux notifications") qui ouvre
