@@ -46,13 +46,20 @@ téléphone pour choisir le match à suivre).
 
 **Montre (`wear/`)** : `ScoreComplicationService` répond aux quatre
 types ci-dessus, sans configuration à l'assignation (rendu identique
-partout). `MatchListenerService` reçoit les mises à jour du téléphone
-(chemin `/match`), décode les logos en Asset, met à jour
-`MatchScoreStore`, force un rafraîchissement immédiat ; un DataItem
-`cleared=true` (envoyé quand le suivi s'arrête côté téléphone)
-réinitialise à "Aucun match". `MatchClock` traduit le statut brut en
-français **sans jamais calculer de minute par déduction** (voir
-"Pourquoi pas de minute de jeu chiffrée"). `UPDATE_PERIOD_SECONDS=60`
+partout). Un tap sur la complication ouvre l'app Sofascore **sur la
+montre** (`sofascoreTapAction`, nécessite un `<queries>` dans le
+manifeste côté montre depuis Android 11). `MatchListenerService` reçoit
+les mises à jour du téléphone (chemin `/match`), décode les logos en
+Asset, met à jour `MatchScoreStore`, force un rafraîchissement immédiat ;
+un DataItem `cleared=true` (envoyé quand le suivi s'arrête côté
+téléphone, OU quand le repli Sofascore n'a plus de notif active à
+afficher — voir plus bas) réinitialise à "Aucun match". `MatchClock`
+traduit le statut brut en français **sans jamais calculer de minute par
+déduction** (voir "Pourquoi pas de minute de jeu chiffrée"). Le score
+affiché entoure de crochets le côté qui vient de marquer/gagner le
+dernier set quand cette info est connue (`MatchScore.lastScorer`,
+repris des crochets de la notif Sofascore elle-même — jamais renseigné
+pour un match suivi via TheSportsDB/Live Tennis API). `UPDATE_PERIOD_SECONDS=60`
 fait rappeler la complication chaque minute même sans nouvelle donnée.
 
 **Téléphone (`mobile/`)** : recherche par équipe/joueur/ligue (choix de
@@ -152,6 +159,22 @@ dans LONG_TEXT (`P1 · PSG 2-1 OM`) :
 glace : `P1`/`P2`/`P3` déjà dans ce format côté API, passent tels
 quels)
 
+**Basket (repli Sofascore)** : mêmes codes `Q1`/`Q2`/`Q3`/`Q4`/`HT`/`FT`
+que TheSportsDB ci-dessus, mais déduits des libellés "Xe quart-temps a
+commencé/terminé"/"Mi-temps terminé" de la notif — voir
+`SofascoreNotificationParser.parseBasketball`. **Handball (repli
+Sofascore)** : mêmes libellés qu'au foot (mi-temps, pas de
+quart-temps) — le gabarit foot suffit déjà, aucun code dédié.
+**Correction de score au foot (repli Sofascore)** : un but peut être
+invalidé après coup (VAR) — Sofascore pousse alors "Correction du
+score : H - A", reconnu au même titre qu'un but classique. **Score
+final "Match terminé : H - A" (tous sports, repli Sofascore)** :
+toujours prioritaire dès qu'il est présent, peu importe sa position
+dans la notif — nécessaire car Sofascore ne respecte pas toujours
+l'ordre chronologique attendu (ex. volley : la ligne de fin du 3e set
+peut arriver APRÈS "Match terminé" ; basket : la toute dernière
+période n'est parfois jamais envoyée séparément).
+
 **Tennis** : aucun indicateur de période en cours de match (le score en
 sets suffit) — seule la fin (`completed`) est traduite, en `Fin`.
 
@@ -203,12 +226,15 @@ faits qui ne sont pas évidents à la lecture du code.
   confondus) sous la même clé de groupe, donc grouper par `groupKey`
   mélangeait les lignes de matchs différents.
 - **Sport déduit du contenu des lignes**, aucun indicateur dédié dans
-  la notif : foot par défaut, tennis/tennis de table/volley si une
-  ligne "Xe set terminé" est présente — ces deux derniers partagent
-  EXACTEMENT le même gabarit de ligne que le tennis, distingués par un
-  test arithmétique (somme des deux scores de la ligne la plus récente
-  = numéro d'ordre du set ⟺ décompte cumulatif de sets, impossible en
-  tennis où ce sont des jeux ≥6). Exemple minimal (foot, 12/09/2026,
+  la notif : "Match terminé : H-A" (score final) toujours vérifié EN
+  PREMIER, peu importe le sport ; puis basket si une ligne contient
+  "quart-temps" ; puis tennis/tennis de table/volley si une ligne "Xe
+  set terminé" est présente — ces deux derniers partagent EXACTEMENT le
+  même gabarit de ligne que le tennis, distingués par un test
+  arithmétique (somme des deux scores de la ligne la plus récente =
+  numéro d'ordre du set ⟺ décompte cumulatif de sets, impossible en
+  tennis où ce sont des jeux ≥6) ; sinon foot (sert aussi au handball,
+  mêmes libellés de mi-temps). Exemple minimal (foot, 12/09/2026,
   Real Madrid - Rayo Vallecano) :
   ```
   35' But : [3] - 0  Jude Bellingham
@@ -230,12 +256,30 @@ faits qui ne sont pas évidents à la lecture du code.
   runtime (contrairement à `POST_NOTIFICATIONS`) — bouton dédié dans
   l'app qui ouvre directement le réglage système.
 - **Quel match suivre en repli** : bouton "Repli Sofascore : … (changer)"
-  → liste (dernière notif en tête, par défaut) ou choix d'un match
-  précis, persisté par la clé de sa notification (`SofascorePrefs.kt`)
-  ; retombe automatiquement sur "dernière notif" si ce match disparaît
-  (terminé, notif supprimée). Pas de logos dans ce mode (pas
-  d'extraction fiable depuis une notif tierce) : texte seul
-  (LONG_TEXT/SHORT_TEXT).
+  → liste (dernière notif en tête, par défaut ET toujours actif) ou
+  choix d'un match précis, persisté par la clé de sa notification
+  (`SofascorePrefs.kt`) ; retombe automatiquement sur "dernière notif"
+  si ce match disparaît (terminé, notif supprimée). **Plus aucune notif
+  Sofascore active ET aucun match suivi par API** → la complication
+  repasse à "Aucun match" (`WatchSync.sendCleared`, corrigé le
+  15/09/2026 — une version antérieure laissait la montre bloquée sur le
+  dernier score Sofascore connu même après suppression de la notif).
+  Pas de logos dans ce mode (pas d'extraction fiable depuis une notif
+  tierce) : texte seul (LONG_TEXT/SHORT_TEXT).
+- **Un match suivi par l'API ne bloque le repli Sofascore que TANT
+  QU'IL EST EN COURS** (corrigé le 15/09/2026) : `MatchFollowService`
+  vide désormais `FollowedMatchPrefs` (+ relance immédiatement le repli
+  Sofascore) dès que le match qu'il suivait se termine tout seul — pas
+  seulement sur arrêt manuel ("Arrêter le suivi", déjà géré côté
+  `MainActivity.stopFollowing()`). Avant ce correctif, un match API fini
+  restait indéfiniment considéré comme "suivi", empêchant le repli
+  Sofascore de reprendre la main tant que Yann ne rouvrait pas l'app
+  pour arrêter le suivi à la main.
+- **Crochets = qui vient de marquer/gagner le dernier set** : repris
+  tels quels de la notif Sofascore (voir plus haut) dans
+  `MatchResult.lastScorer`/`MatchScore.lastScorer`, affichés par
+  `MatchScore.scoreText()` (ex. `PSG [2]-1 OM`) — jamais renseignés
+  pour un match suivi via TheSportsDB/Live Tennis API.
 
 ## Compiler sans Android Studio
 
@@ -282,7 +326,7 @@ sports-complication-watch/
 │       │   ├── LiveTennisApi.kt         client Live Tennis API — tennis (joueurs, matchs, score par sets), clé passée en paramètre (jamais en dur)
 │       │   ├── TennisApiKeyPrefs.kt     stocke la clé Live Tennis API saisie dans l'app (SharedPreferences, jamais dans le code — dépôt public)
 │       │   ├── SofascoreNotificationListenerService.kt   repli "pas de match sélectionné" : lit les notifs Sofascore, mode "dernière" ou match choisi (SofascorePrefs)
-│       │   ├── SofascoreNotificationParser.kt            transforme les lignes de notif (foot/tennis/tennis de table/volley) en statut/score — vocabulaire MatchClock.kt réutilisé, tous les exemples réels confirmés sont documentés ici
+│       │   ├── SofascoreNotificationParser.kt            transforme les lignes de notif (foot/handball/basket/tennis/tennis de table/volley) en statut/score — vocabulaire MatchClock.kt réutilisé, tous les exemples réels confirmés sont documentés ici
 │       │   ├── SofascorePrefs.kt        persiste le choix dernière notif / match précis (clé de notification) pour le repli Sofascore
 │       │   ├── Models.kt                ApiSource / TeamResult / PlayerResult / TennisPlayerResult / LeagueResult / MatchResult
 │       │   ├── SimpleListAdapter.kt     liste générique (équipes, joueurs de foot/tennis/etc., ligues, choix du repli Sofascore)

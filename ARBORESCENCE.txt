@@ -5,64 +5,65 @@ Aucun fichier à supprimer.
 ZIP CUMULATIF : tant que tu n'as pas confirmé avoir chargé un zip sur
 GitHub, toute nouvelle livraison reprend tous les fichiers nouveaux ou
 modifiés depuis ta dernière confirmation. Rien n'a encore été confirmé
-poussé depuis le début de ce fil : ce zip remplace entièrement les
-précédents. Tu n'as besoin que de celui-ci. Dis-moi quand tu auras
-poussé sur GitHub pour repartir d'un compteur à zéro.
+poussé depuis le début de ce fil : ce zip remplace entièrement le
+précédent (sport-watch-complication-basket-crochets-15-09.zip). Tu
+n'as besoin que de celui-ci. Dis-moi quand tu auras poussé sur GitHub
+pour repartir d'un compteur à zéro.
 
-⚠️ Cette livraison touche encore wear/ (comme la précédente) : réinstalle
-wear-debug ET mobile-debug.
+⚠️ Cette livraison touche À LA FOIS mobile/ ET wear/ : réinstalle
+wear-debug ET mobile-debug après le prochain build.
 
-tennis-de-table-but-sans-minute-15-09.zip
-├── README.md                                                          [modifié à nouveau]
+sport-watch-complication-repli-api-fin-match-15-09.zip
+├── README.md                                                          [modifié à nouveau - documente le nouveau correctif ci-dessous]
 ├── mobile/src/main/kotlin/.../mobile/
-│   ├── MainActivity.kt                                                [inchangé depuis la dernière livraison]
-│   ├── SofascorePrefs.kt                                               [inchangé depuis la dernière livraison]
+│   ├── Models.kt                                                      [inchangé depuis la dernière livraison]
+│   ├── WatchSync.kt                                                   [inchangé depuis la dernière livraison]
 │   ├── SofascoreNotificationListenerService.kt                        [inchangé depuis la dernière livraison]
-│   └── SofascoreNotificationParser.kt                                 [modifié - tennis de table/volley + but sans minute]
-└── wear/src/main/kotlin/com/yann/sportscomplication/
-    ├── MatchClock.kt                                                  [modifié - statut vide géré proprement]
-    └── ScoreComplicationService.kt                                    [modifié - omet le statut quand vide]
+│   ├── SofascoreNotificationParser.kt                                 [inchangé depuis la dernière livraison]
+│   └── MatchFollowService.kt                                          [NOUVEAU dans cette livraison - voir correctif ci-dessous]
+└── wear/src/main/
+    ├── AndroidManifest.xml                                            [inchangé depuis la dernière livraison]
+    └── kotlin/com/yann/sportscomplication/
+        ├── MatchScore.kt                                              [inchangé depuis la dernière livraison]
+        ├── MatchListenerService.kt                                    [inchangé depuis la dernière livraison]
+        ├── ScoreComplicationService.kt                                [inchangé depuis la dernière livraison]
+        └── ComplicationImageComposer.kt                                [inchangé depuis la dernière livraison]
 
 CE QUI A CHANGÉ DANS CETTE LIVRAISON :
 
-1) Tennis de table (et présumé volley) : nouveau sport couvert dans
-   SofascoreNotificationParser.kt.
-   - Le tennis et le tennis de table/volley partagent EXACTEMENT le
-     même gabarit de ligne ("Xe set terminé : score - score Nom"),
-     donc on les distingue par un signal mathématique : sur la ligne
-     la plus RÉCENTE, si la somme des deux scores égale le numéro
-     d'ordre du set (ex. "3e set terminé : 2-1" -> 2+1=3), c'est un
-     décompte CUMULATIF de sets (tennis de table/volley) — au tennis,
-     où ce sont des jeux du set qui vient de finir, cette égalité
-     n'arrive jamais (les scores y sont toujours ≥6).
-   - Dans ce cas : pas besoin d'additionner plusieurs lignes comme au
-     tennis, la ligne la plus récente donne déjà le score total à
-     jour. Le numéro du set EN COURS se déduit du dernier set terminé
-     + 1 (ex. 3e set terminé -> statut "S4").
-   - Testé mentalement sur l'exemple fourni (Choi H. - Wang J., 3e set
-     terminé, 2-1) : donne bien homeScore=2, awayScore=1, statut "S4".
-   - "S<N>" est déjà le format brut utilisé par TheSportsDB pour le
-     volley (S1..S5) : affiché tel quel côté montre, sans code dédié.
+1) Un match suivi par l'API ne bloque plus le repli Sofascore une fois
+   TERMINÉ (MatchFollowService.kt) — correction d'un vrai bug, pas
+   juste un réglage
+   - Constat de Yann : "je veux que Sofascore dernière notif prime,
+     toujours, sauf si je choisis autre chose" — et c'était censé être
+     déjà le cas (voir livraison précédente), mais en pratique un match
+     déjà terminé continuait à bloquer le repli.
+   - Cause réelle : FollowedMatchPrefs (le match suivi par l'API) n'était
+     vidé QUE sur arrêt MANUEL (bouton "Arrêter le suivi", dans
+     MainActivity.stopFollowing()) — jamais quand le match suivi se
+     terminait TOUT SEUL (la boucle de polling de MatchFollowService
+     s'arrête d'elle-même dès que `current.isFinished`, sans jamais
+     vider ces prefs). Or SofascoreNotificationListenerService.refresh()
+     s'efface systématiquement dès que FollowedMatchPrefs contient
+     quelque chose, fini ou pas — donc un match API fini restait
+     "suivi" pour toujours aux yeux de cette vérification, jusqu'à ce
+     que Yann rouvre l'app et arrête le suivi à la main (ce qu'il n'a
+     souvent aucune raison de faire, puisque le suivi s'était déjà
+     arrêté tout seul).
+   - Correctif : dès que la boucle de polling se termine parce que le
+     match est fini, MatchFollowService vide maintenant
+     FollowedMatchPrefs ET relance immédiatement
+     SofascoreNotificationListenerService (même schéma que
+     MainActivity.stopFollowing(), qui le faisait déjà pour l'arrêt
+     manuel) — donc si une notif Sofascore est active à ce moment-là,
+     elle reprend la main sur la montre sans délai.
+   - Résultat : la priorité est maintenant vraiment "Sofascore dernière
+     notif, toujours, sauf pendant qu'un match API est activement en
+     cours de suivi" — un match API fini ne compte plus comme "un autre
+     choix" qui bloque Sofascore.
 
-2) But de foot sans minute (SofascoreNotificationParser.kt) : certaines
-   notifs Sofascore (ligues moins couvertes) ne donnent ni minute ni
-   buteur précis — juste "But: score - score NomÉquipe". Reconnu
-   séparément (nouveau gabarit goalNoMinute), score extrait
-   normalement, mais statut laissé VIDE plutôt que d'inventer une
-   minute.
-
-3) wear/MatchClock.kt + wear/ScoreComplicationService.kt : gestion
-   propre du statut vide — la complication affiche alors juste le
-   score, sans "?" ni séparateur devant rien.
-
-4) README.md mis à jour en conséquence (nouvelle sous-section tennis
-   de table/volley, exemple du but sans minute, limites connues).
-
-À tester (après avoir réinstallé wear-debug ET mobile-debug) :
-- Un match de tennis de table ou volley en cours doit afficher le
-  score en sets + "S<N>" (numéro du set en cours), et "Fin" une fois
-  terminé.
-- Un but de foot sans minute (ligue peu couverte) doit afficher juste
-  le score, sans rien devant.
-- Un match de tennis "classique" (Samsonova, Kouamé...) doit continuer
-  à se comporter exactement comme avant (pas de régression).
+À VÉRIFIER SUR APPAREIL (pas testable depuis ici) :
+- Laisser un match API se terminer naturellement pendant qu'une notif
+  Sofascore d'un AUTRE match est active : la complication doit basculer
+  sur cette notif Sofascore dans la foulée, sans avoir besoin de rouvrir
+  l'app.
