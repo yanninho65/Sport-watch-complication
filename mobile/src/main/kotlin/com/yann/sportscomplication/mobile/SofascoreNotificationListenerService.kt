@@ -170,8 +170,9 @@ class SofascoreNotificationListenerService : NotificationListenerService() {
     }
 
     /**
-     * Repli neutre pour tout ce qu'on ne sait pas encore parser (tennis,
-     * événement foot pas encore couvert) : affiche le texte brut de la
+     * Repli neutre pour tout ce qu'on ne sait pas encore parser (sport
+     * autre que foot/tennis, ou événement foot/tennis pas encore couvert
+     * — voir SofascoreNotificationParser) : affiche le texte brut de la
      * notif la plus récente tel quel, sans essayer d'en déduire un score —
      * pour ne jamais afficher une donnée fausse. `homeScore`/`awayScore`
      * restent null, donc MatchResult.title retombe sur "Équipe vs Équipe"
