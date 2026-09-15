@@ -121,6 +121,21 @@ class MatchFollowService : Service() {
             }
 
             // Le match est terminé : plus rien à suivre, on s'arrête proprement.
+            // CORRIGÉ (demandé par Yann le 15/09/2026) : sans ces deux lignes,
+            // le repli Sofascore restait bloqué indéfiniment après une fin
+            // NATURELLE d'un match suivi par l'API — FollowedMatchPrefs
+            // n'était jusqu'ici vidé que sur arrêt MANUEL (bouton "Arrêter
+            // le suivi", voir MainActivity.stopFollowing()), jamais quand
+            // cette boucle s'arrêtait d'elle-même parce que le match était
+            // fini. Résultat : refresh() de SofascoreNotificationListenerService
+            // continuait à voir un FollowedMatchPrefs non-null (le match,
+            // désormais fini) et à s'effacer devant lui pour toujours,
+            // jusqu'à ce que Yann rouvre l'app et arrête le suivi à la main.
+            FollowedMatchPrefs.clear(this@MatchFollowService)
+            // Même raison que dans MainActivity.stopFollowing() : sans ça,
+            // le repli Sofascore n'apparaîtrait qu'au prochain événement
+            // reçu de Sofascore, pas immédiatement à la fin du suivi API.
+            SofascoreNotificationListenerService.refreshIfConnected()
             stopForegroundAndSelf()
         }
     }

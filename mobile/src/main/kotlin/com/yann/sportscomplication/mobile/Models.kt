@@ -63,6 +63,15 @@ data class MatchResult(
      */
     val currentSetHomeGames: Int? = null,
     val currentSetAwayGames: Int? = null,
+    /**
+     * "home"/"away" si on sait quel côté vient de marquer/gagner le
+     * dernier set, null sinon — repris des crochets de la notif Sofascore
+     * elle-même (voir SofascoreNotificationParser.bracketedSide), donc
+     * toujours null pour un match suivi via TheSportsDB/Live Tennis API
+     * (qui ne fournissent pas cette info). Relayé tel quel à la montre par
+     * WatchSync ; wear/MatchScore.kt/scoreText l'affiche entre crochets.
+     */
+    val lastScorer: String? = null,
     val date: String,
     val time: String?,
     val status: String,
@@ -110,6 +119,7 @@ private const val EXTRA_HOME_SCORE = "com.yann.sportscomplication.mobile.extra.H
 private const val EXTRA_AWAY_SCORE = "com.yann.sportscomplication.mobile.extra.AWAY_SCORE"
 private const val EXTRA_CURRENT_SET_HOME_GAMES = "com.yann.sportscomplication.mobile.extra.CURRENT_SET_HOME_GAMES"
 private const val EXTRA_CURRENT_SET_AWAY_GAMES = "com.yann.sportscomplication.mobile.extra.CURRENT_SET_AWAY_GAMES"
+private const val EXTRA_LAST_SCORER = "com.yann.sportscomplication.mobile.extra.LAST_SCORER"
 private const val EXTRA_DATE = "com.yann.sportscomplication.mobile.extra.DATE"
 private const val EXTRA_TIME = "com.yann.sportscomplication.mobile.extra.TIME"
 private const val EXTRA_STATUS = "com.yann.sportscomplication.mobile.extra.STATUS"
@@ -128,6 +138,7 @@ fun MatchResult.toExtras(): Bundle = Bundle().apply {
     putString(EXTRA_AWAY_SCORE, awayScore)
     currentSetHomeGames?.let { putInt(EXTRA_CURRENT_SET_HOME_GAMES, it) }
     currentSetAwayGames?.let { putInt(EXTRA_CURRENT_SET_AWAY_GAMES, it) }
+    lastScorer?.let { putString(EXTRA_LAST_SCORER, it) }
     putString(EXTRA_DATE, date)
     putString(EXTRA_TIME, time)
     putString(EXTRA_STATUS, status)
@@ -157,6 +168,7 @@ fun Intent.toMatchResult(): MatchResult? {
         awayScore = getStringExtra(EXTRA_AWAY_SCORE),
         currentSetHomeGames = if (hasExtra(EXTRA_CURRENT_SET_HOME_GAMES)) getIntExtra(EXTRA_CURRENT_SET_HOME_GAMES, 0) else null,
         currentSetAwayGames = if (hasExtra(EXTRA_CURRENT_SET_AWAY_GAMES)) getIntExtra(EXTRA_CURRENT_SET_AWAY_GAMES, 0) else null,
+        lastScorer = getStringExtra(EXTRA_LAST_SCORER),
         date = getStringExtra(EXTRA_DATE) ?: "?",
         time = getStringExtra(EXTRA_TIME),
         status = getStringExtra(EXTRA_STATUS).orEmpty(),

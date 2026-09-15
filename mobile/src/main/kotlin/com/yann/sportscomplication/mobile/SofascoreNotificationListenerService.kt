@@ -87,13 +87,30 @@ class SofascoreNotificationListenerService : NotificationListenerService() {
         if (sbn.packageName == SOFASCORE_PACKAGE) refresh()
     }
 
-    /** Relit les notifications actives et pousse le repli à la montre, s'il y a lieu. */
+    /**
+     * Relit les notifications actives et pousse le repli à la montre, s'il
+     * y a lieu.
+     *
+     * CORRIGÉ (demandé par Yann le 15/09/2026) : si plus aucune notif
+     * Sofascore n'est active ET qu'aucun match n'est suivi via l'API, la
+     * complication doit repasser à "Aucun match" — auparavant cette
+     * fonction se contentait de ne rien faire dans ce cas (`return`), donc
+     * la montre restait bloquée sur le dernier score Sofascore connu même
+     * après que Yann ait viré la notif du centre de notifications. Le
+     * `null` de [activeSofascoreNotifications] (accès non accordé) reste
+     * traité différemment de la liste vide (accès accordé, juste plus rien
+     * à afficher) : dans le premier cas on ne peut rien dire, donc on ne
+     * touche à rien.
+     */
     fun refresh() {
         // Le suivi manuel (recherche dans l'app) prime toujours sur ce repli.
         if (FollowedMatchPrefs.load(this) != null) return
 
         val notifications = activeSofascoreNotifications() ?: return
-        if (notifications.isEmpty()) return
+        if (notifications.isEmpty()) {
+            WatchSync.sendCleared(this)
+            return
+        }
 
         // Si un match précis a été choisi ET qu'il a encore une notif
         // active, on le suit ; sinon (mode "dernière", ou match choisi

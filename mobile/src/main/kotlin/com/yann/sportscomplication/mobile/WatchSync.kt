@@ -44,6 +44,7 @@ object WatchSync {
             dataMap.putString("awayScore", match.awayScore ?: "")
             match.currentSetHomeGames?.let { dataMap.putInt("currentSetHomeGames", it) }
             match.currentSetAwayGames?.let { dataMap.putInt("currentSetAwayGames", it) }
+            match.lastScorer?.let { dataMap.putString("lastScorer", it) }
             dataMap.putString("status", match.status)
             match.kickoffEpochMillis?.let { dataMap.putLong("kickoffEpochMillis", it) }
             homeLogo?.let { dataMap.putAsset("homeLogo", it) }
