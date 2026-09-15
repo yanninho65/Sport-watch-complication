@@ -1,15 +1,19 @@
 package com.yann.sportscomplication.mobile
 
 /**
- * Transforme les lignes d'un groupe de notifications Sofascore (un groupe =
- * un match, voir SofascoreNotificationListenerService) en un [MatchResult]
- * de repli. NE COUVRE QUE LE FOOT pour l'instant — le tennis sera ajouté dès
- * qu'un exemple réel de notif (fin de set / fin de match) sera disponible.
+ * Transforme les lignes d'une notification Sofascore (une notif = un match,
+ * voir SofascoreNotificationListenerService) en un [MatchResult] de repli.
+ * NE COUVRE QUE LE FOOT pour l'instant — le tennis sera ajouté dès qu'un
+ * exemple réel de notif (fin de set / fin de match) sera disponible.
  *
  * [lines] doit être trié DU PLUS RÉCENT AU PLUS ANCIEN (comme affiché dans
  * le panneau de notifications) : on s'arrête à la première ligne reconnue,
  * ce qui donne l'état courant du match même si des lignes plus anciennes et
  * non reconnues (carton, corner...) se trouvent plus bas dans la liste.
+ *
+ * Un match qui vient de démarrer (coup d'envoi) affiche 0-0 — la
+ * notif Sofascore confirmée pour cet événement ("Match commencé", sans
+ * score) ne le précise pas, voir [firstHalfStarted].
  *
  * Exemple réel observé (capture d'écran, 12/09/2026, Real Madrid - Rayo
  * Vallecano) :
@@ -28,9 +32,16 @@ object SofascoreNotificationParser {
     private val matchFinished = Regex("""Match termin[ée]\s*:\s*(\d+)\s*-\s*(\d+)""", RegexOption.IGNORE_CASE)
     private val halfTime = Regex("""Mi-temps\s*:\s*(\d+)\s*-\s*(\d+)""", RegexOption.IGNORE_CASE)
     private val secondHalfStarted = Regex("""2\w*\s*mi-temps a commenc[ée]\s*:\s*(\d+)\s*-\s*(\d+)""", RegexOption.IGNORE_CASE)
-    // Non confirmé par un exemple réel (pas encore vu de notif de coup
-    // d'envoi) — best-effort, sans risque si ça ne matche jamais.
-    private val firstHalfStarted = Regex("""(?:1\w*\s*mi-temps|match) a commenc[ée]\s*:\s*(\d+)\s*-\s*(\d+)""", RegexOption.IGNORE_CASE)
+    // CONFIRMÉ par un exemple réel (14/09/2026) : Sofascore écrit
+    // "Match commencé" — sans "a" (pas "Match A commencé") et sans
+    // score accolé. Le "a" et le score restent tous deux optionnels
+    // dans le gabarit pour couvrir aussi une éventuelle formulation
+    // "Le match a commencé (: 0 - 0)" ou "1ère mi-temps a commencé" si
+    // Sofascore les utilise ailleurs (foot à un autre niveau, tennis...).
+    private val firstHalfStarted = Regex(
+        """(?:1\w*\s*mi-temps|match)(?:\s+a)?\s+commenc[ée](?:\s*:\s*(\d+)\s*-\s*(\d+))?""",
+        RegexOption.IGNORE_CASE
+    )
 
     /**
      * Gabarit générique "MM' <libellé> : score - score" — couvre "But"
@@ -68,7 +79,9 @@ object SofascoreNotificationParser {
                 return build(homeTeam, awayTeam, m.groupValues[1], m.groupValues[2], "2H")
             }
             firstHalfStarted.find(line)?.let { m ->
-                return build(homeTeam, awayTeam, m.groupValues[1], m.groupValues[2], "1H")
+                val home = m.groupValues[1].ifBlank { "0" }
+                val away = m.groupValues[2].ifBlank { "0" }
+                return build(homeTeam, awayTeam, home, away, "1H")
             }
             timedEvent.find(line)?.let { m ->
                 val minute = m.groupValues[1]
