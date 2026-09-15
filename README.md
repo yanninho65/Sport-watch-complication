@@ -212,12 +212,34 @@ que tu l'aies décidé.
 Quand aucun match n'est suivi manuellement, `SofascoreNotificationListenerService`
 relit les notifications de l'app Sofascore (`com.sofascore.results`,
 vérifié via sa fiche Play Store) et pousse un score déduit à la montre —
-tant que Yann ne supprime pas le groupe de notifications d'un match,
-celui-ci reste disponible en repli jusqu'à la fin du match.
+tant que la notification Sofascore d'un match reste active, celui-ci
+reste disponible en repli jusqu'à la fin du match.
+
+**Une notif Sofascore = un match, mise à jour en place** — confirmé sur
+appareil (test du 12/09/2026, Real Madrid - Rayo Vallecano) : Sofascore
+poste UNE notification par match, mise à jour en place plutôt qu'une
+notification par événement, avec jusqu'à 6 lignes d'historique
+(`EXTRA_TEXT_LINES`, style Inbox, plafond Android). Chaque notif est
+identifiée par sa propre `StatusBarNotification.getKey()` (stable à
+travers ses mises à jour), **pas par le `groupKey` système comme dans
+une version antérieure** : un test réel (14/09/2026, un match de
+tennis démarrant pendant un match de foot déjà suivi) a montré que
+Sofascore regroupe apparemment TOUTES ses notifications sous la même
+clé de groupe, tous matchs confondus — grouper par `groupKey` mélangeait
+donc les lignes de deux matchs différents (le score du foot terminé
+ressortait sur la notif tennis). Le code ne groupe plus du tout :
+chaque notification Sofascore active est traitée individuellement.
+
+**Ordre des lignes confirmé** : `InboxStyle.addLine()` affiche les
+lignes dans leur ordre d'ajout, la première ajoutée en haut (doc
+officielle Android). Sofascore ajoute donc chaque nouvel événement EN
+PREMIER : `EXTRA_TEXT_LINES` est déjà trié du plus récent au plus
+ancien, pas besoin de le renverser (une version antérieure le
+renversait par erreur, ce qui faisait remonter le premier but marqué du
+match — ex. 1-0 — au lieu du score final).
 
 **Foot uniquement pour l'instant** (`SofascoreNotificationParser.kt`),
-d'après un exemple réel de notif (Real Madrid - Rayo Vallecano,
-12/09/2026) :
+d'après l'exemple réel ci-dessus :
 ```
 Match terminé : 4 - 1
 90' But : [4] - 1  Kylian Mbappé
@@ -226,19 +248,28 @@ Match terminé : 4 - 1
 Mi-temps : 3 - 0
 35' But : [3] - 0  Jude Bellingham
 ```
-Reconnu : fin de match, mi-temps, début de 2e mi-temps, et un gabarit
-générique `MM' <libellé> : score - score` qui couvre "But" et, sans
-avoir besoin de connaître le mot exact, tout futur événement horodaté
-par une minute (carton, but annulé/corrigé après VAR...) — le score
-affiché par Sofascore est déjà à jour, pas besoin de le recalculer.
-Le statut poussé à la montre réutilise le vocabulaire déjà connu de
-`wear/MatchClock.kt` (`FT`/`HT`/`2H`, ou un nombre nu affiché `"MM'"`)
-: **aucun changement côté montre n'a été nécessaire** pour ce repli.
-**Tennis pas encore couvert** (pas d'exemple réel de notif de fin de
-set/fin de match) — comme tout événement non reconnu, une notif tennis
-tombe dans le **repli neutre** : le texte brut de la notif la plus
-récente est affiché tel quel, sans tenter d'en déduire un score, pour
-ne jamais afficher une donnée fausse.
+Autre exemple réel confirmé (14/09/2026, coup d'envoi) :
+```
+Match commencé
+```
+Reconnu : fin de match, mi-temps, début de 2e mi-temps, coup d'envoi
+(confirmé par un exemple réel, 14/09/2026 : Sofascore écrit simplement
+"Match commencé", sans "a" et sans score accolé — **score forcé à 0-0**
+dans ce cas, un match qui démarre étant toujours à 0-0 ; le gabarit
+reste tolérant à une variante avec "a" et/ou un score explicite, si
+jamais Sofascore l'utilise ailleurs), et un gabarit générique
+`MM' <libellé> : score - score` qui couvre
+"But" et, sans avoir besoin de connaître le mot exact, tout futur
+événement horodaté par une minute (carton, but annulé/corrigé après
+VAR...) — le score affiché par Sofascore est déjà à jour, pas besoin de
+le recalculer. Le statut poussé à la montre réutilise le vocabulaire
+déjà connu de `wear/MatchClock.kt` (`FT`/`HT`/`2H`/`1H`, ou un nombre
+nu affiché `"MM'"`) : **aucun changement côté montre n'a été
+nécessaire** pour ce repli. **Tennis pas encore couvert** (pas
+d'exemple réel de notif de fin de set/fin de match) — comme tout
+événement non reconnu, une notif tennis tombe dans le **repli neutre** :
+le texte brut de la notif la plus récente est affiché tel quel, sans
+tenter d'en déduire un score, pour ne jamais afficher une donnée fausse.
 
 **Amélioration progressive, par petites touches** : le parseur est
 construit au fur et à mesure que Yann envoie des captures ou des
@@ -260,33 +291,25 @@ directement Paramètres > Notifications > Accès aux notifications.
 
 **Quel match suivre en repli** : un second bouton ("Repli Sofascore :
 … (changer)") ouvre une liste — "Dernière notification (auto)" en tête
-(comportement par défaut : le groupe le plus récemment mis à jour),
-puis un élément par match actuellement dans le centre de notifications
-(équipes + aperçu de la dernière ligne). Choisir un match précis fixe
-le repli dessus (persisté, `SofascorePrefs.kt`) tant qu'il reste une
-notif active pour ce match ; s'il se termine (notif supprimée), le
-repli retombe automatiquement sur "dernière notif" plutôt que de ne
-plus rien afficher. Le match choisi est identifié par le `groupKey`
-système de sa notification (`SofascoreNotificationListenerService.
-listAvailableMatches`), pas par les noms d'équipes.
+(comportement par défaut : la notif la plus récemment mise à jour),
+puis un élément par notif Sofascore active (équipes + aperçu de la
+dernière ligne). Choisir un match précis fixe le repli dessus
+(persisté, `SofascorePrefs.kt`) tant que sa notif reste active ; si
+elle disparaît (match terminé et notif supprimée), le repli retombe
+automatiquement sur "dernière notif" plutôt que de ne plus rien
+afficher. Le match choisi est identifié par la clé de sa notification
+(`StatusBarNotification.getKey`, voir plus haut), pas par les noms
+d'équipes.
 
-**Hypothèse non vérifiée sur appareil** : le code part du principe que
-Sofascore poste une notification par événement, regroupées par le
-système sous un même groupe par match (ce que Yann a décrit :
-"un groupe de notifications = un match", une notif à chaque set/fin de
-match en tennis). Si Sofascore utilise en réalité une seule
-notification mise à jour en place (style Inbox), le code gère aussi ce
-cas (lecture d'`EXTRA_TEXT_LINES` en plus des notifications sœurs du
-groupe) — à ajuster une fois testé en conditions réelles sur le
-téléphone de Yann. Pas de logos d'équipe dans ce mode (impossible à
-extraire fiablement d'une notification tierce) : seul le texte
-(LONG_TEXT/SHORT_TEXT) est renseigné, pas SMALL_IMAGE/MONOCHROMATIC_IMAGE.
+Pas de logos d'équipe dans ce mode (impossible à extraire fiablement
+d'une notification tierce) : seul le texte (LONG_TEXT/SHORT_TEXT) est
+renseigné, pas SMALL_IMAGE/MONOCHROMATIC_IMAGE.
 
 ## Limites connues
 
-- **Repli notifications Sofascore : foot uniquement, hypothèse de
-  groupement non vérifiée sur appareil** — voir la section dédiée
-  ci-dessus.
+- **Repli notifications Sofascore : foot uniquement pour l'instant**
+  (tennis pas encore couvert, repli neutre en attendant) — voir la
+  section dédiée ci-dessus.
 - **Tennis : 100 requêtes/jour seulement (plan gratuit Live Tennis
   API)** — voir "Choix de l'API, du sport et intégration tennis"
   ci-dessus pour le
@@ -391,7 +414,7 @@ sports-complication-watch/
 │       │   ├── TennisApiKeyPrefs.kt     stocke la clé Live Tennis API saisie dans l'app (SharedPreferences, jamais dans le code — dépôt public)
 │       │   ├── SofascoreNotificationListenerService.kt   repli "pas de match sélectionné" : lit les notifs Sofascore, mode "dernière" ou match choisi (SofascorePrefs)
 │       │   ├── SofascoreNotificationParser.kt            transforme les lignes de notif foot en statut/score (vocabulaire MatchClock.kt réutilisé)
-│       │   ├── SofascorePrefs.kt        persiste le choix dernière notif / match précis (groupKey) pour le repli Sofascore
+│       │   ├── SofascorePrefs.kt        persiste le choix dernière notif / match précis (clé de notification) pour le repli Sofascore
 │       │   ├── Models.kt                ApiSource / TeamResult / PlayerResult / TennisPlayerResult / LeagueResult / MatchResult
 │       │   ├── SimpleListAdapter.kt     liste générique (équipes, joueurs de foot/tennis/etc., ligues, choix du repli Sofascore)
 │       │   └── MatchesAdapter.kt

@@ -1,4 +1,38 @@
-./ARBORESCENCE.txt
-./mobile/src/main/kotlin/com/yann/sportscomplication/mobile/MainActivity.kt
-./mobile/src/main/kotlin/com/yann/sportscomplication/mobile/SofascoreNotificationListenerService.kt
-./mobile/src/main/kotlin/com/yann/sportscomplication/mobile/SofascorePrefs.kt
+Arborescence des fichiers livrés dans ce zip — à extraire à la racine
+du dépôt Sport-watch-complication (écrase les fichiers existants).
+Aucun fichier à supprimer.
+
+ZIP CUMULATIF : tant que tu n'as pas confirmé avoir chargé un zip sur
+GitHub, toute nouvelle livraison reprend tous les fichiers nouveaux ou
+modifiés depuis ta dernière confirmation. Rien n'a encore été confirmé
+poussé depuis le début de ce fil : ce zip remplace entièrement le
+précédent. Tu n'as besoin que de celui-ci. Dis-moi quand tu auras
+poussé sur GitHub pour repartir d'un compteur à zéro.
+
+sofascore-fix-14-09-cumulatif-v2.zip
+├── README.md                                                          [modifié à nouveau]
+└── mobile/src/main/kotlin/.../mobile/
+    ├── MainActivity.kt                                                [inchangé depuis la dernière livraison]
+    ├── SofascorePrefs.kt                                               [inchangé depuis la dernière livraison]
+    ├── SofascoreNotificationListenerService.kt                        [inchangé depuis la dernière livraison]
+    └── SofascoreNotificationParser.kt                                 [modifié à nouveau]
+
+CE QUI A CHANGÉ DANS CETTE LIVRAISON (par rapport à la précédente) :
+
+1) Libellé exact du coup d'envoi confirmé : Sofascore écrit simplement
+   "Match commencé" — SANS "a" (pas "Match a commencé") et sans score
+   accolé. Le gabarit précédent exigeait littéralement "a commenc[ée]",
+   donc ne matchait PAS ce texte réel : la ligne tombait dans le repli
+   neutre (texte brut affiché) au lieu du score 0-0 attendu.
+   - SofascoreNotificationParser.kt : le "a" devient optionnel dans
+     firstHalfStarted (en plus du score, déjà optionnel depuis la
+     livraison précédente). Couvre maintenant "Match commencé", "Le
+     match a commencé", "1ère mi-temps a commencé", avec ou sans score.
+
+2) README.md : section Sofascore mise à jour avec le libellé confirmé
+   ("Match commencé") en exemple réel, à la place de la mention
+   "pas encore vu d'exemple réel, best-effort".
+
+À tester :
+- Un match qui vient de démarrer doit maintenant afficher 0-0 sur la
+  montre (et non plus le texte brut "Match commencé").
