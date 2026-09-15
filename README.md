@@ -240,8 +240,9 @@ faits qui ne sont pas évidents à la lecture du code.
   35' But : [3] - 0  Jude Bellingham
   ```
   Le PREMIER nombre est toujours le score domicile ; les crochets
-  entourent le score de l'équipe qui vient de marquer/gagner le set
-  (non exploités pour déterminer domicile/extérieur).
+  entourent le score de l'équipe qui vient de marquer/gagner le set —
+  exploités depuis le 15/09/2026 pour `MatchResult.lastScorer` (voir
+  plus bas), mais jamais pour déterminer domicile/extérieur.
 - **Ambiguïté au tout début d'un match** : "Match commencé" est le même
   libellé dans tous les sports, indistinguable tant qu'aucun set n'est
   terminé — un match à sets qui démarre est donc affiché brièvement
