@@ -40,15 +40,25 @@ data class SofascoreMatchOption(
  * POST_NOTIFICATIONS — voir le bouton dédié dans MainActivity qui ouvre
  * directement l'écran système).
  *
- * HYPOTHÈSE NON VÉRIFIÉE SUR APPAREIL — à confirmer/ajuster une fois testé
- * en conditions réelles : on part du principe que Sofascore poste UNE
- * notification par événement (but, mi-temps, fin de match...), regroupées
- * par le système sous une même [StatusBarNotification.getGroupKey] pour un
- * même match. Si Sofascore utilise en réalité une seule notification mise à
- * jour en place (style Inbox avec plusieurs lignes internes), [collectLines]
- * gère aussi ce cas en lisant `EXTRA_TEXT_LINES` de chaque notification, en
- * plus des notifications "sœurs" du même groupe — donc les deux mécanismes
- * sont couverts sans code séparé.
+ * CONFIRMÉ SUR APPAREIL (test du 12/09, Real Madrid - Rayo Vallecano) :
+ * Sofascore poste UNE SEULE notification par match, mise à jour en place,
+ * en style Inbox (`EXTRA_TEXT_LINES`, plafonné à 6 lignes par Android —
+ * les 6 lignes de la capture le confirment). [collectLines] gère aussi le
+ * cas où Sofascore posterait plutôt une notification par événement
+ * regroupée par le système (`StatusBarNotification.getGroupKey`), mais ce
+ * n'est pas le cas observé.
+ *
+ * ATTENTION ORDRE : `InboxStyle.addLine()` affiche les lignes dans leur
+ * ordre d'ajout, la première ajoutée en haut (doc officielle Android). La
+ * capture montre l'événement le plus récent EN HAUT ("Match terminé"),
+ * donc Sofascore ajoute chaque nouvel événement EN PREMIER (`addLine`
+ * appelé avec la dernière ligne avant les anciennes) : le tableau brut
+ * `EXTRA_TEXT_LINES` est donc déjà trié du plus récent au plus ancien.
+ * [collectLines] ne doit PAS le renverser (une version antérieure le
+ * renversait par erreur, ce qui faisait remonter le PREMIER but marqué
+ * dans le match — ex. 1-0 — au lieu du score final, la boucle de
+ * [SofascoreNotificationParser.parse] s'arrêtant à la première ligne
+ * reconnue).
  */
 class SofascoreNotificationListenerService : NotificationListenerService() {
 
@@ -138,9 +148,12 @@ class SofascoreNotificationListenerService : NotificationListenerService() {
     /**
      * Récupère les lignes du groupe, DU PLUS RÉCENT AU PLUS ANCIEN — que
      * Sofascore poste une notification par événement (chaque
-     * [StatusBarNotification] du groupe = une ligne) ou une seule notif
-     * mise à jour en place (`EXTRA_TEXT_LINES`, style Inbox, où la ligne la
-     * plus récente est ajoutée en dernier dans le tableau).
+     * [StatusBarNotification] du groupe = une ligne, on trie alors par
+     * date de publication) ou une seule notif mise à jour en place
+     * (`EXTRA_TEXT_LINES`, style Inbox). Dans ce second cas — celui
+     * confirmé sur appareil — le tableau `EXTRA_TEXT_LINES` est DÉJÀ
+     * trié du plus récent au plus ancien (voir la note en tête de
+     * fichier) : on ne le renverse plus.
      */
     private fun collectLines(group: List<StatusBarNotification>): List<String> {
         val lines = mutableListOf<String>()
@@ -148,7 +161,7 @@ class SofascoreNotificationListenerService : NotificationListenerService() {
             val extras = sbn.notification.extras
             val textLines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES)
             if (textLines != null && textLines.isNotEmpty()) {
-                lines += textLines.reversed().map { it.toString() }
+                lines += textLines.map { it.toString() }
             } else {
                 extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()?.let { lines += it }
             }
