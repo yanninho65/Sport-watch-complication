@@ -20,7 +20,8 @@ import androidx.wear.watchface.complications.datasource.ComplicationRequest
  *
  * Quatre types sont supportés (voir AndroidManifest.xml) :
  *  - LONG_TEXT          : pour l'emplacement central de Zenith
- *                         (ex. "PSG 2-1 OM · 64'")
+ *                         (ex. "P1 · PSG 2-1 OM" — l'indication de temps
+ *                         est affichée en premier, voir MatchClock.kt)
  *  - SMALL_IMAGE        : pour un emplacement "petit rectangle" qui accepte
  *                         une image en couleur (image composée réunissant
  *                         les deux logos ET le score, couleurs d'origine —
@@ -108,7 +109,10 @@ class ScoreComplicationService : ComplicationDataSourceService() {
         } else {
             "vs"
         }
-        val text = "${match.homeTeam} $scoreText ${match.awayTeam} · ${MatchClock.label(match)}"
+        // Indication de temps (P1/MT/P2/Fin...) en premier, puis
+        // équipes/score — demandé par Yann le 15/09/2026 (auparavant
+        // l'ordre inverse : "PSG 2-1 OM · 1ère MT").
+        val text = "${MatchClock.label(match)} · ${match.homeTeam} $scoreText ${match.awayTeam}"
 
         return LongTextComplicationData.Builder(
             text = PlainComplicationText.Builder(text).build(),
