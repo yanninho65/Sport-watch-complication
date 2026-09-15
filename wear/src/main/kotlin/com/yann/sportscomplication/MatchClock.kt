@@ -39,13 +39,24 @@ import java.util.Locale
  * - Hockey sur glace (`P1`/`P2`/`P3` déjà tels quels dans l'API — aucune
  *   règle dédiée nécessaire, passent déjà tels quels par la branche
  *   `else` ci-dessous, non demandé par Yann mais couvert par cohérence)
- * - Volley, tennis (sports à SET, `S1`..`S5` côté TheSportsDB) : PAS
- *   d'indicateur de période affiché en cours de match (le score, en
- *   nombre de sets, suffit à situer la progression) — seul `FT`/
- *   `completed` est traduit, en "Fin". Les codes `S1`..`S5` ne sont donc
- *   volontairement PAS traduits ici (pas dans le `when` ci-dessous) :
- *   affichage brut ("S1"...) en repli via la branche `else`, sans
- *   conséquence puisque le score seul situe déjà la progression.
+ * - Tennis (sets à décompte NON cumulatif, score = jeux du set qui vient
+ *   de finir) : PAS d'indicateur de période affiché en cours de match —
+ *   le score en sets suffit. Seul `completed` (`tennisLabel`) est
+ *   traduit, en "Fin".
+ * - Tennis de table, volley (sets à décompte CUMULATIF — repli
+ *   Sofascore uniquement, voir mobile/SofascoreNotificationParser.kt) :
+ *   affiche `S<N>` (N = numéro du set EN COURS, déjà calculé côté
+ *   téléphone) — déjà le format brut utilisé par TheSportsDB pour le
+ *   volley (`S1`..`S5` ci-dessous), donc affiché tel quel via la
+ *   branche `else`, sans règle dédiée. `Fin` à la fin, comme les autres
+ *   sports.
+ *
+ * Statut vide (`""`, jamais un statut manquant dans TheSportsDB/Live
+ * Tennis API elles-mêmes, mais possible côté repli Sofascore — ex. un
+ * but sans minute donnée par la notif, voir mobile/
+ * SofascoreNotificationParser.kt/goalNoMinute) -> chaîne vide plutôt que
+ * d'inventer une période : wear/ScoreComplicationService.kt omet alors
+ * le "· " devant le score plutôt que d'afficher un statut vide ou "?".
  *
  * Les statuts testés ci-dessous couvrent à la fois les codes courts
  * officiels documentés par TheSportsDB (NS, 1H, HT, 2H, FT, Q1... voir
@@ -65,7 +76,7 @@ object MatchClock {
         val status = match.status.trim()
 
         return when {
-            status.isBlank() -> "?"
+            status.isBlank() -> ""
 
             status.equals("NS", ignoreCase = true) ||
                 status.equals("TBD", ignoreCase = true) ||
@@ -157,7 +168,7 @@ object MatchClock {
 
             status.equals("cancelled", ignoreCase = true) -> "Annulé"
 
-            status.isBlank() -> "?"
+            status.isBlank() -> ""
 
             else -> status
         }

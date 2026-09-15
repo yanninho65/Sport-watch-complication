@@ -111,8 +111,16 @@ class ScoreComplicationService : ComplicationDataSourceService() {
         }
         // Indication de temps (P1/MT/P2/Fin...) en premier, puis
         // équipes/score — demandé par Yann le 15/09/2026 (auparavant
-        // l'ordre inverse : "PSG 2-1 OM · 1ère MT").
-        val text = "${MatchClock.label(match)} · ${match.homeTeam} $scoreText ${match.awayTeam}"
+        // l'ordre inverse : "PSG 2-1 OM · 1ère MT"). Si MatchClock.label
+        // renvoie une chaîne vide (statut inconnu, voir MatchClock.kt),
+        // on omet le "· " plutôt que d'afficher un séparateur seul devant
+        // rien.
+        val statusLabel = MatchClock.label(match)
+        val text = if (statusLabel.isBlank()) {
+            "${match.homeTeam} $scoreText ${match.awayTeam}"
+        } else {
+            "$statusLabel · ${match.homeTeam} $scoreText ${match.awayTeam}"
+        }
 
         return LongTextComplicationData.Builder(
             text = PlainComplicationText.Builder(text).build(),
