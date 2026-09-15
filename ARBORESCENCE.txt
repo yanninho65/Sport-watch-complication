@@ -5,34 +5,71 @@ Aucun fichier à supprimer.
 ZIP CUMULATIF : tant que tu n'as pas confirmé avoir chargé un zip sur
 GitHub, toute nouvelle livraison reprend tous les fichiers nouveaux ou
 modifiés depuis ta dernière confirmation. Rien n'a encore été confirmé
-poussé depuis le début de ce fil : ce zip remplace entièrement le
-précédent. Tu n'as besoin que de celui-ci. Dis-moi quand tu auras
+poussé depuis le début de ce fil : ce zip remplace entièrement les
+précédents. Tu n'as besoin que de celui-ci. Dis-moi quand tu auras
 poussé sur GitHub pour repartir d'un compteur à zéro.
 
-sofascore-fix-14-09-cumulatif-v2.zip
+⚠️ CETTE LIVRAISON TOUCHE wear/ EN PLUS DE mobile/, POUR LA PREMIÈRE
+FOIS DE CE FIL : il faut réinstaller wear-debug (complication) sur la
+montre EN PLUS de mobile-debug sur le téléphone, sinon la montre
+continuera d'afficher l'ancien vocabulaire (1ère MT/Mi-temps/2e MT/
+Terminé, score après le statut).
+
+vocabulaire-statuts-15-09.zip
 ├── README.md                                                          [modifié à nouveau]
-└── mobile/src/main/kotlin/.../mobile/
-    ├── MainActivity.kt                                                [inchangé depuis la dernière livraison]
-    ├── SofascorePrefs.kt                                               [inchangé depuis la dernière livraison]
-    ├── SofascoreNotificationListenerService.kt                        [inchangé depuis la dernière livraison]
-    └── SofascoreNotificationParser.kt                                 [modifié à nouveau]
+├── mobile/src/main/kotlin/.../mobile/
+│   ├── MainActivity.kt                                                [inchangé depuis la dernière livraison]
+│   ├── SofascorePrefs.kt                                               [inchangé depuis la dernière livraison]
+│   ├── SofascoreNotificationListenerService.kt                        [inchangé depuis la dernière livraison]
+│   └── SofascoreNotificationParser.kt                                 [modifié - but horodaté "MM+"]
+└── wear/src/main/kotlin/com/yann/sportscomplication/
+    ├── MatchClock.kt                                                  [modifié - nouveau vocabulaire de statuts]
+    └── ScoreComplicationService.kt                                    [modifié - ordre d'affichage inversé]
 
-CE QUI A CHANGÉ DANS CETTE LIVRAISON (par rapport à la précédente) :
+CE QUI A CHANGÉ DANS CETTE LIVRAISON :
 
-1) Libellé exact du coup d'envoi confirmé : Sofascore écrit simplement
-   "Match commencé" — SANS "a" (pas "Match a commencé") et sans score
-   accolé. Le gabarit précédent exigeait littéralement "a commenc[ée]",
-   donc ne matchait PAS ce texte réel : la ligne tombait dans le repli
-   neutre (texte brut affiché) au lieu du score 0-0 attendu.
-   - SofascoreNotificationParser.kt : le "a" devient optionnel dans
-     firstHalfStarted (en plus du score, déjà optionnel depuis la
-     livraison précédente). Couvre maintenant "Match commencé", "Le
-     match a commencé", "1ère mi-temps a commencé", avec ou sans score.
+1) Nouveau vocabulaire de statuts, unifié entre sports (côté montre,
+   MatchClock.kt) :
+   - 1H -> P1 (était "1ère MT")
+   - HT -> MT (était "Mi-temps")
+   - 2H -> P2 (était "2e MT")
+   - Q1/Q2/Q3/Q4 -> P1/P2/P3/P4 (basket, foot US — nouveau, pas géré
+     avant)
+   - FT / AOT -> Fin (était "Terminé")
+   - AET -> Fin (a.p.), PEN/AP -> Fin (tab) (était "Terminé (a.p./tab)")
+   - Tennis : "completed" -> Fin (était "Terminé")
+   - Codes confirmés sur https://www.thesportsdb.com/docs_api_data
+     (foot, rugby, handball, basket, volley, hockey, foot US, baseball)
+   - Sports à set (volley, tennis) : toujours PAS d'indicateur de
+     période en cours de match, juste "Fin" à la fin — comme demandé,
+     le score en sets suffit à situer la progression.
 
-2) README.md : section Sofascore mise à jour avec le libellé confirmé
-   ("Match commencé") en exemple réel, à la place de la mention
-   "pas encore vu d'exemple réel, best-effort".
+2) Ordre d'affichage inversé sur la complication centrale LONG_TEXT
+   (ScoreComplicationService.kt) : l'indication de temps passe EN
+   PREMIER — "P1 · PSG 2-1 OM" au lieu de "PSG 2-1 OM · 1ère MT".
+   Aucun autre emplacement (SHORT_TEXT, SMALL_IMAGE,
+   MONOCHROMATIC_IMAGE) n'affiche de statut : rien à changer là.
 
-À tester :
-- Un match qui vient de démarrer doit maintenant afficher 0-0 sur la
-  montre (et non plus le texte brut "Match commencé").
+3) But horodaté au foot, repli Sofascore uniquement
+   (SofascoreNotificationParser.kt) : le statut poussé est maintenant
+   directement "37+" (minute + "+") plutôt que "37" nu — évite de
+   passer par la règle générique de MatchClock.kt pensée pour un autre
+   cas (une minute brute parfois renvoyée par TheSportsDB, sans
+   rapport avec Sofascore). Sans changement de comportement pour le
+   reste (mi-temps/2e mi-temps reprennent automatiquement le relais
+   dès que la notif Sofascore progresse, mécanisme déjà en place).
+
+4) README.md : nouvelle section "Statuts affichés (P1/MT/Fin...)"
+   documentant le tableau complet par sport, mise à jour de tous les
+   exemples touchés par le nouvel ordre d'affichage.
+
+À tester (après avoir réinstallé wear-debug ET mobile-debug) :
+- Un match de foot en cours (Sofascore ou suivi manuel) doit afficher
+  "P1 · ..." au coup d'envoi, "MT · ..." à la mi-temps, "P2 · ..." à la
+  reprise, "Fin · ..." à la fin, et "37+ · ..." sur un but horodaté
+  (Sofascore uniquement) — dans cet ordre (statut avant le score).
+- Un match de basket suivi manuellement (TheSportsDB) doit afficher
+  P1/P2/MT/P3/P4/Fin selon l'avancement.
+- Un match de tennis (Sofascore ou Live Tennis API) doit toujours
+  afficher juste le score en sets pendant le match, et "Fin" une fois
+  terminé — sans indicateur de période superflu.
