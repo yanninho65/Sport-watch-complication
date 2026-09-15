@@ -8,7 +8,8 @@ import android.os.Bundle
  * MainActivity.ApiMode, LiveTennisApi.kt et
  * MatchFollowService.pollIntervalMillis). Ne dit PAS quel sport précis
  * a été cherché — TheSportsDB couvre plusieurs sports (foot, basket,
- * baseball... voir MainActivity.SportsDbSport) sous ce même SPORTS_DB.
+ * baseball...) sous ce même SPORTS_DB, sans filtre par sport côté
+ * recherche (voir SportsDbApi.kt).
  */
 enum class ApiSource { SPORTS_DB, LIVE_TENNIS }
 

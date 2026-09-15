@@ -8,10 +8,12 @@ import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.view.View
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
@@ -20,11 +22,16 @@ import kotlinx.coroutines.launch
 
 /**
  * Demande d'abord QUELLE API interroger (TheSportsDB ou Live Tennis
- * API — voir [ApiMode]), puis QUEL SPORT dans cette API (plusieurs
- * sports possibles pour TheSportsDB, voir [SportsDbSport] ; un seul
- * pour Live Tennis API, implicite), puis recherche un match dans ce
- * sport (par équipe, joueur ou ligue pour TheSportsDB ; par joueur
- * uniquement en tennis) et lance son suivi.
+ * API — voir [ApiMode]), puis, pour TheSportsDB, QUEL SPORT (voir
+ * [SportsDbSport] — "Tous sports" par défaut, pour ne rien filtrer),
+ * puis recherche un match (par équipe, joueur ou ligue pour
+ * TheSportsDB ; par joueur uniquement en tennis) et lance son suivi.
+ * Un sélecteur de sport sans option "Tous sports" a existé ici, puis a
+ * été retiré (il forçait à choisir un sport précis, ce qui écartait des
+ * résultats valides dès que le libellé ne correspondait pas exactement
+ * à celui attendu). Cette version ajoute l'option "Tous sports"
+ * (aucun filtre, comportement par défaut) tout en gardant les sports
+ * précis pour qui veut activement restreindre sa recherche.
  *
  * Le polling périodique et l'envoi à la montre ne vivent plus ici depuis
  * l'introduction de MatchFollowService (foreground service, continue
@@ -47,19 +54,28 @@ class MainActivity : AppCompatActivity() {
      * champ `strSport` de l'API (voir SportsDbApi.searchTeams/
      * searchPlayers/searchLeagues). N'a pas de sens pour Live Tennis API
      * (mono-sport, tennis implicite). [apiValue] est le libellé exact
-     * attendu par TheSportsDB pour ce sport.
+     * attendu par TheSportsDB pour ce sport, ou null pour [ALL] (aucun
+     * filtre — comportement par défaut, celui qui existait avant que ce
+     * sélecteur n'existe).
      */
-    private enum class SportsDbSport(val label: String, val apiValue: String) {
+    private enum class SportsDbSport(val label: String, val apiValue: String?) {
+        ALL("Tous sports", null),
         SOCCER("Football", "Soccer"),
         BASKETBALL("Basketball", "Basketball"),
-        BASEBALL("Baseball", "Baseball"),
-        ICE_HOCKEY("Hockey sur glace", "Ice Hockey"),
-        AMERICAN_FOOTBALL("Football US", "American Football")
+        HANDBALL("Handball", "Handball"),
+        RUGBY("Rugby", "Rugby"),
+        VOLLEYBALL("Volleyball", "Volleyball")
     }
-    private var sportsDbSport = SportsDbSport.SOCCER
+    private var sportsDbSport = SportsDbSport.ALL
 
     private enum class SearchMode { TEAM, PLAYER, LEAGUE }
     private var searchMode = SearchMode.TEAM
+
+    /** Éléments listés par showSofascorePicker() : soit "dernière notif" (auto), soit un match précis. */
+    private sealed class SofascorePickerItem {
+        object Latest : SofascorePickerItem()
+        data class Match(val option: SofascoreMatchOption) : SofascorePickerItem()
+    }
 
     /** Reçoit les mises à jour envoyées par MatchFollowService pendant que l'app est ouverte au premier plan. */
     private val matchUpdatedReceiver = object : BroadcastReceiver() {
@@ -89,24 +105,38 @@ class MainActivity : AppCompatActivity() {
         binding.buttonBackToSearch.setOnClickListener { showSearchState() }
         binding.buttonStopFollowing.setOnClickListener { stopFollowing() }
 
+        // Repli Sofascore (voir SofascoreNotificationListenerService) : l'accès
+        // aux notifications est une permission spéciale, non demandable au
+        // runtime comme POST_NOTIFICATIONS — seul un raccourci vers l'écran
+        // système est possible, Yann doit l'activer lui-même.
+        binding.buttonNotificationAccess.setOnClickListener {
+            startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        }
+
+        // Choix du repli Sofascore : "dernière notif" (auto, par défaut) ou
+        // un match précis parmi ceux actuellement dans le centre de
+        // notifications — voir showSofascorePicker().
+        binding.buttonSofascoreFallback.setOnClickListener { showSofascorePicker() }
+
         // Question 1 : quelle API. Repart d'un état de recherche propre à
-        // chaque changement — le sélecteur de sport TheSportsDB et le
-        // sélecteur équipe/joueur/ligue n'ont pas de sens en tennis, et
-        // une liste de résultats de l'API précédente resterait affichée
-        // sinon.
+        // chaque changement — le sélecteur de sport et le sélecteur
+        // équipe/joueur/ligue n'ont pas de sens en tennis, et une liste
+        // de résultats de l'API précédente resterait affichée sinon.
         binding.radioApi.setOnCheckedChangeListener { _, checkedId ->
             apiMode = if (checkedId == R.id.radioApiTennis) ApiMode.LIVE_TENNIS else ApiMode.SPORTS_DB
             showSearchState()
         }
 
-        // Question 2 (TheSportsDB uniquement) : quel sport.
+        // Question 2 (TheSportsDB uniquement) : quel sport. "Tous sports"
+        // (par défaut) ne filtre rien — voir SportsDbSport.
         binding.radioSportsDbSport.setOnCheckedChangeListener { _, checkedId ->
             sportsDbSport = when (checkedId) {
+                R.id.radioSdbSoccer -> SportsDbSport.SOCCER
                 R.id.radioSdbBasketball -> SportsDbSport.BASKETBALL
-                R.id.radioSdbBaseball -> SportsDbSport.BASEBALL
-                R.id.radioSdbIceHockey -> SportsDbSport.ICE_HOCKEY
-                R.id.radioSdbAmFootball -> SportsDbSport.AMERICAN_FOOTBALL
-                else -> SportsDbSport.SOCCER
+                R.id.radioSdbHandball -> SportsDbSport.HANDBALL
+                R.id.radioSdbRugby -> SportsDbSport.RUGBY
+                R.id.radioSdbVolleyball -> SportsDbSport.VOLLEYBALL
+                else -> SportsDbSport.ALL
             }
             showSearchState()
         }
@@ -138,6 +168,8 @@ class MainActivity : AppCompatActivity() {
 
         showSearchState()
         requestNotificationPermissionIfNeeded()
+        updateNotificationAccessButtonLabel()
+        updateSofascoreFallbackButtonLabel()
     }
 
     override fun onStart() {
@@ -150,6 +182,78 @@ class MainActivity : AppCompatActivity() {
         )
         val followed = FollowedMatchPrefs.load(this)
         if (followed != null) showFollowedCard(followed) else hideFollowedCard()
+        // Rafraîchit le libellé au retour de l'écran système (Yann vient
+        // peut-être d'accorder l'accès depuis Paramètres > Notifications).
+        updateNotificationAccessButtonLabel()
+    }
+
+    /** Reflète si l'accès aux notifications (repli Sofascore) est déjà accordé — ne peut pas être demandé au runtime, juste vérifié. */
+    private fun updateNotificationAccessButtonLabel() {
+        val granted = NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+        binding.buttonNotificationAccess.text = if (granted) {
+            "Accès aux notifications activé ✓ (repli Sofascore)"
+        } else {
+            "Activer l'accès aux notifications (repli Sofascore)"
+        }
+    }
+
+    /** Reflète le choix actuel (dernière notif / match précis) sur le bouton — voir showSofascorePicker(). */
+    private fun updateSofascoreFallbackButtonLabel() {
+        val label = if (SofascorePrefs.loadMode(this) == SofascorePrefs.Mode.CHOSEN) {
+            SofascorePrefs.loadChosenLabel(this) ?: "match choisi"
+        } else {
+            "dernière notif"
+        }
+        binding.buttonSofascoreFallback.text = "Repli Sofascore : $label (changer)"
+    }
+
+    /**
+     * Liste, dans la zone de recherche habituelle, les matchs Sofascore
+     * actuellement dans le centre de notifications, plus une option
+     * "dernière notification (auto)" toujours en tête. Choisir un élément
+     * fixe le repli en conséquence (SofascorePrefs) et pousse le résultat
+     * immédiatement à la montre.
+     */
+    private fun showSofascorePicker() {
+        val granted = NotificationManagerCompat.getEnabledListenerPackages(this).contains(packageName)
+        if (!granted) {
+            Toast.makeText(this, "Active d'abord l'accès aux notifications ci-dessus", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val matches = SofascoreNotificationListenerService.listAvailableMatchesIfConnected()
+        val items = mutableListOf<SofascorePickerItem>(SofascorePickerItem.Latest)
+        items += matches.map { SofascorePickerItem.Match(it) }
+
+        binding.buttonBackToSearch.visibility = View.VISIBLE
+        binding.textStatus.text = if (matches.isEmpty()) {
+            "Aucune notification Sofascore active pour l'instant — seul le mode automatique est disponible"
+        } else {
+            "Notifications Sofascore actives — choisis le repli à utiliser"
+        }
+        binding.recyclerView.adapter = SimpleListAdapter(
+            items,
+            { item ->
+                when (item) {
+                    is SofascorePickerItem.Latest -> "Dernière notification (auto)"
+                    is SofascorePickerItem.Match -> {
+                        val option = item.option
+                        val preview = option.latestLine.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""
+                        "${option.homeTeam} - ${option.awayTeam}$preview"
+                    }
+                }
+            }
+        ) { item ->
+            when (item) {
+                is SofascorePickerItem.Latest -> SofascorePrefs.saveLatest(this)
+                is SofascorePickerItem.Match -> SofascorePrefs.saveChosen(
+                    this, item.option.groupKey, "${item.option.homeTeam} - ${item.option.awayTeam}"
+                )
+            }
+            SofascoreNotificationListenerService.refreshIfConnected()
+            updateSofascoreFallbackButtonLabel()
+            showSearchState()
+        }
     }
 
     override fun onStop() {
@@ -222,7 +326,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val teams = safeCall { SportsDbApi.searchTeams(query, sportsDbSport.apiValue) }
             if (teams.isEmpty()) {
-                binding.textStatus.text = "Aucune équipe trouvée pour \"$query\" (${sportsDbSport.label})"
+                binding.textStatus.text = "Aucune équipe trouvée pour \"$query\"${sportSuffix()}"
                 binding.recyclerView.adapter = null
                 return@launch
             }
@@ -237,7 +341,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val players = safeCall { SportsDbApi.searchPlayers(query, sportsDbSport.apiValue) }
             if (players.isEmpty()) {
-                binding.textStatus.text = "Aucun joueur trouvé pour \"$query\" (${sportsDbSport.label})"
+                binding.textStatus.text = "Aucun joueur trouvé pour \"$query\"${sportSuffix()}"
                 binding.recyclerView.adapter = null
                 return@launch
             }
@@ -260,7 +364,7 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val leagues = safeCall { SportsDbApi.searchLeagues(query, sportsDbSport.apiValue) }
             if (leagues.isEmpty()) {
-                binding.textStatus.text = "Aucune ligue trouvée pour \"$query\" (${sportsDbSport.label})"
+                binding.textStatus.text = "Aucune ligue trouvée pour \"$query\"${sportSuffix()}"
                 binding.recyclerView.adapter = null
                 return@launch
             }
@@ -270,6 +374,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
     }
+
+    /** "" si "Tous sports" (rien à préciser), sinon " (Football)" etc. — pour les messages de statut. */
+    private fun sportSuffix(): String =
+        if (sportsDbSport == SportsDbSport.ALL) "" else " (${sportsDbSport.label})"
 
     private fun showMatchesForTeamToday(teamId: String, label: String) {
         binding.textStatus.text = "Chargement des matchs de $label…"
@@ -322,6 +430,10 @@ class MainActivity : AppCompatActivity() {
         WatchSync.sendCleared(this)
         FollowedMatchPrefs.clear(this)
         hideFollowedCard()
+        // Sans ça, le repli Sofascore n'apparaîtrait qu'au prochain
+        // événement reçu de Sofascore, pas immédiatement à l'arrêt du
+        // suivi manuel — voir SofascoreNotificationListenerService.
+        SofascoreNotificationListenerService.refreshIfConnected()
     }
 
     private fun showFollowedCard(match: MatchResult) {
@@ -353,7 +465,7 @@ class MainActivity : AppCompatActivity() {
                     SearchMode.LEAGUE -> "Nom de ligue (ex. Ligue 1)"
                 }
                 binding.textStatus.text =
-                    "Cherche une équipe, un joueur ou une ligue de ${sportsDbSport.label} pour commencer"
+                    "Cherche une équipe, un joueur ou une ligue${sportSuffix()} pour commencer"
             }
             ApiMode.LIVE_TENNIS -> {
                 binding.radioSportsDbSport.visibility = View.GONE

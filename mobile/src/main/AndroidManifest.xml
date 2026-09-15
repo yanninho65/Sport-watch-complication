@@ -42,6 +42,25 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!--
+             Repli "pas de match sélectionné" (voir README) : relit les
+             notifications Sofascore pour en déduire un score, tant qu'aucun
+             match n'est suivi manuellement. exported=true et la permission
+             BIND_NOTIFICATION_LISTENER_SERVICE sont IMPOSÉS par Android pour
+             ce type de service (c'est le système, pas une autre app, qui s'y
+             lie) — Yann doit l'activer à la main dans Paramètres >
+             Notifications > Accès aux notifications (bouton dédié dans
+             MainActivity, qui ouvre directement cet écran).
+        -->
+        <service
+            android:name=".SofascoreNotificationListenerService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
     </application>
 
 </manifest>

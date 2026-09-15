@@ -46,6 +46,34 @@
     </LinearLayout>
 
     <!--
+         Repli "pas de match sélectionné" : lit les notifications Sofascore
+         via SofascoreNotificationListenerService. L'accès aux notifications
+         est une permission spéciale (pas demandable au runtime comme
+         POST_NOTIFICATIONS) — ce bouton ouvre directement l'écran système
+         où Yann doit l'accorder à la main. Toujours visible, indépendamment
+         du mode de recherche (TheSportsDB/tennis) — voir MainActivity.
+    -->
+    <Button
+        android:id="@+id/buttonNotificationAccess"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="Activer l'accès aux notifications (repli Sofascore)" />
+
+    <!--
+         Choix du repli Sofascore : "dernière notif" (auto, par défaut) ou
+         un match précis parmi ceux actuellement dans le centre de
+         notifications — voir MainActivity.showSofascorePicker(). Ouvre la
+         liste dans la zone de recherche habituelle (recyclerView).
+    -->
+    <Button
+        android:id="@+id/buttonSofascoreFallback"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginBottom="8dp"
+        android:text="Repli Sofascore : dernière notif (changer)" />
+
+    <!--
          Question 1 : quelle API interroger — TheSportsDB (multi-sport) ou
          Live Tennis API (tennis uniquement). Voir MainActivity.ApiMode et
          LiveTennisApi.kt. Le volley n'a pas été retenu comme 3e option :
@@ -77,12 +105,12 @@
 
     <!--
          Question 2 (TheSportsDB uniquement, masqué en tennis où le sport
-         "Tennis" est implicite) : quel sport, PARMI ceux couverts par
-         TheSportsDB — sert à filtrer les recherches équipe/joueur/ligue
-         côté client (voir SportsDbApi.kt, champ strSport). Avec la clé
-         gratuite, en pratique seul Football renvoie des résultats fiables
-         (voir "Limites connues" du README) — les autres sports restent
-         proposés mais peuvent renvoyer 0 résultat.
+         "Tennis" est implicite) : quel sport. "Tous sports" (par défaut)
+         ne filtre rien côté client — voir MainActivity.SportsDbSport et
+         SportsDbApi.kt. Les sports précis restent disponibles pour qui
+         veut activement restreindre sa recherche ; avec la clé gratuite,
+         en pratique seul Football renvoie des résultats fiables (voir
+         "Limites connues" du README).
     -->
     <RadioGroup
         android:id="@+id/radioSportsDbSport"
@@ -92,11 +120,17 @@
         android:layout_marginBottom="8dp">
 
         <RadioButton
+            android:id="@+id/radioSdbAll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="Tous sports"
+            android:checked="true" />
+
+        <RadioButton
             android:id="@+id/radioSdbSoccer"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Football"
-            android:checked="true" />
+            android:text="Football" />
 
         <RadioButton
             android:id="@+id/radioSdbBasketball"
@@ -105,22 +139,22 @@
             android:text="Basketball" />
 
         <RadioButton
-            android:id="@+id/radioSdbBaseball"
+            android:id="@+id/radioSdbHandball"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Baseball" />
+            android:text="Handball" />
 
         <RadioButton
-            android:id="@+id/radioSdbIceHockey"
+            android:id="@+id/radioSdbRugby"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Hockey sur glace" />
+            android:text="Rugby" />
 
         <RadioButton
-            android:id="@+id/radioSdbAmFootball"
+            android:id="@+id/radioSdbVolleyball"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Football US" />
+            android:text="Volleyball" />
 
     </RadioGroup>
 

@@ -82,23 +82,36 @@ Avant de chercher, l'app téléphone pose deux questions dans l'ordre :
 1. **Quelle API interroger** (`radioApi`) : **TheSportsDB** ou
    **Live Tennis API**
 2. **Quel sport** (`radioSportsDbSport`, TheSportsDB uniquement — le
-   tennis est implicite pour Live Tennis API, mono-sport) : Football,
-   Basketball, Baseball, Hockey sur glace ou Football US
+   tennis est implicite pour Live Tennis API, mono-sport) : **Tous
+   sports** (par défaut), Football, Basketball, Handball, Rugby ou
+   Volleyball
 
-Le sport choisi à l'étape 2 filtre les recherches équipe/joueur/ligue
-côté client, sur le champ `strSport` renvoyé par TheSportsDB (déjà
-récupéré pour les ligues via `LeagueResult.sport` ; ajouté pour les
-équipes et joueurs dans cette livraison — voir `SportsDbApi.kt`). Ce
-n'est PAS un paramètre d'URL envoyé à l'API (`searchteams.php`/
-`searchplayers.php` n'en acceptent pas) : la recherche interroge
-TheSportsDB normalement, puis les résultats dont le sport ne correspond
-pas sont écartés avant affichage. **Limite à connaître** : avec la clé
-gratuite, la recherche de ligues ne renvoie de toute façon qu'une
-dizaine de grandes ligues de FOOTBALL en pratique (voir "Limites
-connues" plus bas) — choisir un autre sport que Football renverra donc
-très probablement 0 résultat pour les ligues ; les équipes/joueurs
-peuvent en revanche exister dans d'autres sports selon ce que couvre la
-clé gratuite.
+**Tous sports** (par défaut) n'ajoute aucun filtre : c'est le
+comportement qui existait avant l'introduction de ce sélecteur, et
+celui qui existait aussi juste après son retrait temporaire (le
+sélecteur avait été retiré entièrement le temps d'une livraison, le
+temps de corriger un bug de recherche — voir plus bas). Choisir un
+sport précis filtre en plus les recherches équipe/joueur/ligue côté
+client, sur le champ `strSport` renvoyé par TheSportsDB (voir
+`SportsDbApi.kt`). Ce n'est PAS un paramètre d'URL envoyé à l'API
+(`searchteams.php`/`searchplayers.php` n'en acceptent pas) : la
+recherche interroge TheSportsDB normalement, puis, si un sport précis a
+été choisi, les résultats dont le sport ne correspond pas sont écartés
+avant affichage. **Limite à connaître** : avec la clé gratuite, la
+recherche de ligues ne renvoie de toute façon qu'une dizaine de grandes
+ligues de FOOTBALL en pratique (voir "Limites connues" plus bas) —
+choisir un autre sport que Football renverra donc très probablement 0
+résultat pour les ligues ; les équipes/joueurs peuvent en revanche
+exister dans d'autres sports selon ce que couvre la clé gratuite.
+
+**Historique de ce sélecteur** : la première version forçait à choisir
+un sport (pas d'option "Tous sports"), ce qui écartait à tort de vrais
+résultats dès que le libellé `strSport` ne correspondait pas exactement
+à celui attendu — la recherche semblait "cassée". Il avait alors été
+retiré entièrement. Cette version le réintroduit avec "Tous sports" en
+option par défaut (donc sans ce risque par défaut), tout en gardant les
+sports précis disponibles pour qui veut activement restreindre sa
+recherche.
 
 Une fois l'API et le sport choisis :
 
@@ -194,10 +207,76 @@ qui appelle `/api/v2/json/livescore/soccer` pour récupérer une vraie
 minute — pas fait ici pour ne pas ajouter de dépendance payante sans
 que tu l'aies décidé.
 
+## Repli "pas de match sélectionné" : notifications Sofascore
+
+Quand aucun match n'est suivi manuellement, `SofascoreNotificationListenerService`
+relit les notifications de l'app Sofascore (`com.sofascore.results`,
+vérifié via sa fiche Play Store) et pousse un score déduit à la montre —
+tant que Yann ne supprime pas le groupe de notifications d'un match,
+celui-ci reste disponible en repli jusqu'à la fin du match.
+
+**Foot uniquement pour l'instant** (`SofascoreNotificationParser.kt`),
+d'après un exemple réel de notif (Real Madrid - Rayo Vallecano,
+12/09/2026) :
+```
+Match terminé : 4 - 1
+90' But : [4] - 1  Kylian Mbappé
+51' But : 3 - [1]  Sergio Camello
+2de mi-temps a commencé: 3 - 0
+Mi-temps : 3 - 0
+35' But : [3] - 0  Jude Bellingham
+```
+Reconnu : fin de match, mi-temps, début de 2e mi-temps, et un gabarit
+générique `MM' <libellé> : score - score` qui couvre "But" et, sans
+avoir besoin de connaître le mot exact, tout futur événement horodaté
+par une minute (carton, but annulé/corrigé après VAR...) — le score
+affiché par Sofascore est déjà à jour, pas besoin de le recalculer.
+Le statut poussé à la montre réutilise le vocabulaire déjà connu de
+`wear/MatchClock.kt` (`FT`/`HT`/`2H`, ou un nombre nu affiché `"MM'"`)
+: **aucun changement côté montre n'a été nécessaire** pour ce repli.
+**Tennis pas encore couvert** (pas d'exemple réel de notif de fin de
+set/fin de match) — comme tout événement non reconnu, une notif tennis
+tombe dans le **repli neutre** : le texte brut de la notif la plus
+récente est affiché tel quel, sans tenter d'en déduire un score, pour
+ne jamais afficher une donnée fausse.
+
+**Accès aux notifications** : permission spéciale, non demandable au
+runtime (contrairement à `POST_NOTIFICATIONS`) — bouton dédié dans
+l'app téléphone ("Activer l'accès aux notifications") qui ouvre
+directement Paramètres > Notifications > Accès aux notifications.
+
+**Quel match suivre en repli** : un second bouton ("Repli Sofascore :
+… (changer)") ouvre une liste — "Dernière notification (auto)" en tête
+(comportement par défaut : le groupe le plus récemment mis à jour),
+puis un élément par match actuellement dans le centre de notifications
+(équipes + aperçu de la dernière ligne). Choisir un match précis fixe
+le repli dessus (persisté, `SofascorePrefs.kt`) tant qu'il reste une
+notif active pour ce match ; s'il se termine (notif supprimée), le
+repli retombe automatiquement sur "dernière notif" plutôt que de ne
+plus rien afficher. Le match choisi est identifié par le `groupKey`
+système de sa notification (`SofascoreNotificationListenerService.
+listAvailableMatches`), pas par les noms d'équipes.
+
+**Hypothèse non vérifiée sur appareil** : le code part du principe que
+Sofascore poste une notification par événement, regroupées par le
+système sous un même groupe par match (ce que Yann a décrit :
+"un groupe de notifications = un match", une notif à chaque set/fin de
+match en tennis). Si Sofascore utilise en réalité une seule
+notification mise à jour en place (style Inbox), le code gère aussi ce
+cas (lecture d'`EXTRA_TEXT_LINES` en plus des notifications sœurs du
+groupe) — à ajuster une fois testé en conditions réelles sur le
+téléphone de Yann. Pas de logos d'équipe dans ce mode (impossible à
+extraire fiablement d'une notification tierce) : seul le texte
+(LONG_TEXT/SHORT_TEXT) est renseigné, pas SMALL_IMAGE/MONOCHROMATIC_IMAGE.
+
 ## Limites connues
 
+- **Repli notifications Sofascore : foot uniquement, hypothèse de
+  groupement non vérifiée sur appareil** — voir la section dédiée
+  ci-dessus.
 - **Tennis : 100 requêtes/jour seulement (plan gratuit Live Tennis
-  API)** — voir "Choix du sport et intégration tennis" ci-dessus pour le
+  API)** — voir "Choix de l'API, du sport et intégration tennis"
+  ci-dessus pour le
   détail et l'intervalle de polling adapté en conséquence. Le volley n'a
   pas été intégré, couverture jugée trop limitée côté API gratuites.
 - **Pas de minute chiffrée sans Premium** — voir section ci-dessus.
@@ -288,20 +367,23 @@ sports-complication-watch/
 │   ├── build.gradle.kts          dépendances du module téléphone
 │   ├── debug.keystore            même clé que côté montre
 │   └── src/main/
-│       ├── AndroidManifest.xml   déclare MainActivity + MatchFollowService
+│       ├── AndroidManifest.xml   déclare MainActivity + MatchFollowService + SofascoreNotificationListenerService
 │       ├── kotlin/.../
-│       │   ├── MainActivity.kt          choix API (TheSportsDB/tennis) → sport → recherche → sélection → démarre le suivi
+│       │   ├── MainActivity.kt          choix API (TheSportsDB/tennis) → sport → recherche → sélection → démarre le suivi ; + boutons accès notifications et choix du repli Sofascore
 │       │   ├── MatchFollowService.kt    foreground service : polling (60s TheSportsDB / 3min tennis) + envoi montre en arrière-plan
 │       │   ├── WatchSync.kt             envoi vers la montre (partagé Activity/Service)
 │       │   ├── FollowedMatchPrefs.kt    persiste le match suivi (+ source API) pour ré-afficher la carte au retour
-│       │   ├── SportsDbApi.kt           client TheSportsDB — multi-sport (équipes, joueurs, ligues, matchs, logos), filtré par sport côté client
+│       │   ├── SportsDbApi.kt           client TheSportsDB — multi-sport (équipes, joueurs, ligues, matchs, logos), filtré par sport côté client si un sport précis est choisi
 │       │   ├── LiveTennisApi.kt         client Live Tennis API — tennis (joueurs, matchs, score par sets), clé passée en paramètre (jamais en dur)
 │       │   ├── TennisApiKeyPrefs.kt     stocke la clé Live Tennis API saisie dans l'app (SharedPreferences, jamais dans le code — dépôt public)
+│       │   ├── SofascoreNotificationListenerService.kt   repli "pas de match sélectionné" : lit les notifs Sofascore, mode "dernière" ou match choisi (SofascorePrefs)
+│       │   ├── SofascoreNotificationParser.kt            transforme les lignes de notif foot en statut/score (vocabulaire MatchClock.kt réutilisé)
+│       │   ├── SofascorePrefs.kt        persiste le choix dernière notif / match précis (groupKey) pour le repli Sofascore
 │       │   ├── Models.kt                ApiSource / TeamResult / PlayerResult / TennisPlayerResult / LeagueResult / MatchResult
-│       │   ├── SimpleListAdapter.kt     liste générique (équipes, joueurs de foot/tennis/etc., ligues)
+│       │   ├── SimpleListAdapter.kt     liste générique (équipes, joueurs de foot/tennis/etc., ligues, choix du repli Sofascore)
 │       │   └── MatchesAdapter.kt
 │       └── res/
-│           ├── layout/    activity_main (radioApi, radioSportsDbSport, champ clé tennis, radioSearchMode), item_team, item_match
+│           ├── layout/    activity_main (radioApi, radioSportsDbSport, champ clé tennis, radioSearchMode, boutons accès notifications + choix repli Sofascore), item_team, item_match
 │           └── drawable/  ic_notification.xml (icône de la notification de suivi)
 └── .github/workflows/build.yml   build CI (Java 17, Android SDK, Gradle 8.9)
 ```
